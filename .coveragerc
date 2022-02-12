@@ -1,6 +1,6 @@
 [run]
 omit =
-    data/*
+    runs/*
     data_generation/*
     scripts/*
     mavlink_utils/*
