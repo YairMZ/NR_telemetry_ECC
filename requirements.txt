@@ -1,7 +1,7 @@
 bitstring~=3.1.9
 numpy~=1.22.1
-scipy~=1.7.1
+scipy>=1.8.0
 pymavlink~=2.4.15
-pytest~=6.2.5
+pytest>=7.0
 sim-ldpc
 matplotlib~=3.5.1
