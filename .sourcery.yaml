@@ -1,0 +1,2 @@
+ignore: 
+  - data_generation/mission_profile.py
