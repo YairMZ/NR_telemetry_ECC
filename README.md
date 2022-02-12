@@ -30,7 +30,7 @@ to run also coverage tests.
  - Data Models - Implements data models to model the structure of data. Subclass DataModel interface to create models.
  - Decoders - Implements structure based decoders. Subclass Decoder interface to create decoders.
  - Inference - Implements utilities for general purpose inference, such as segmentation.
- - Utils - Includes various utilities.
+ - [Utils](utils/README.md) - Includes various utilities.
  - Protocol Meta - Includes metadata about the protocol used.
  - MAVLink Utils - utility for generating new MAVLink dialects. Based on
 [pymavlink](https://github.com/ArduPilot/pymavlink).
