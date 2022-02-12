@@ -24,7 +24,7 @@ to run also coverage tests.
 
 -----------
 ## Included Modules
- - Decoders - Implements structure based decoders. Subclass Decoder interface to create decoders.
+ - [Decoders](decoders/README.md) - Implements structure based decoders. Subclass Decoder interface to create decoders.
  - Inference - Implements classes for general purpose inference, such as segmentation, or classification of buffers
  - [Utils](utils/README.md) - Includes various utilities.
  - Protocol Meta - Includes metadata about the protocol used.
