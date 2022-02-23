@@ -59,7 +59,9 @@ class EntropyBitwiseDecoder(Decoder):
         """
         estimate, llr, decode_success, iterations = self.ldpc_decoder.decode(channel_llr)
         if decode_success:
-
+            model_bits = estimate[self.model_bits_idx]
+            model_bytes: bytes = np.packbits(model_bits).tobytes()
+            msg_parts, validity, structure = self.segmentor.segment_buffer(model_bytes)
             if MsgParts.UNKNOWN not in msg_parts:  # buffer fully recovered
                 self.update_model(model_bits)
             return estimate, llr, decode_success, iterations, len(structure)

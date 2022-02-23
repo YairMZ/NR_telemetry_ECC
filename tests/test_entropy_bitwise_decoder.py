@@ -31,20 +31,19 @@ class TestEntropyBitwiseDecoder:
         channel = bsc_llr(p=0.02)
         channel_llr = channel(np.array(corrupted, dtype=np.int_))
         decoder = EntropyBitwiseDecoder(DecoderWiFi(spec=WiFiSpecCode.N1944_R23, max_iter=20, ),
-                                                model_length=1224, entropy_threshold=0.36,
-                                                clipping_factor=2, min_data=1)
+                                        model_length=1224, entropy_threshold=0.36,
+                                        clipping_factor=2, min_data=1)
         d = decoder.decode_buffer(channel_llr)
         assert bitstring.Bits(d[0]) == encoded
 
     def test_unsuccessful_decode(self) -> None:
         with open("tests/test_data/entropy_bitwise_decoder_unsuccessful_decode.pickle", 'rb') as f:
             d = pickle.load(f)
-        encoded = d['encoded']
         corrupted = d['corrupted']
         channel = bsc_llr(p=0.1)
         channel_llr = channel(np.array(corrupted, dtype=np.int_))
         decoder = EntropyBitwiseDecoder(DecoderWiFi(spec=WiFiSpecCode.N1944_R23, max_iter=20, ),
-                                                model_length=1224, entropy_threshold=0.36,
-                                                clipping_factor=2, min_data=1)
+                                        model_length=1224, entropy_threshold=0.36,
+                                        clipping_factor=2, min_data=1)
         d = decoder.decode_buffer(channel_llr)
         assert d[2] is False
