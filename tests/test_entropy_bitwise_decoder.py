@@ -9,7 +9,7 @@ from ldpc.wifi_spec_codes import WiFiSpecCode
 import pickle
 
 
-class TestEntropyBitwiseFlippingDecoder:
+class TestEntropyBitwiseDecoder:
     def test_wrong_buffer_length(self) -> None:
         entropy_decoder = EntropyBitwiseDecoder(DecoderWiFi(spec=WiFiSpecCode.N1944_R23, max_iter=10),
                                                 model_length=10, entropy_threshold=1, clipping_factor=1, min_data=1)
@@ -49,7 +49,7 @@ class TestEntropyBitwiseFlippingDecoder:
         assert d[2] is False
 
 
-class TestEntropyBitwiseDecoder:
+class TestEntropyBitwiseFlippingDecoder:
     def test_wrong_buffer_length(self) -> None:
         entropy_decoder = EntropyBitwiseFlippingDecoder(DecoderWiFi(spec=WiFiSpecCode.N1944_R23, max_iter=10,
                                                                     channel_model=bsc_llr(p=0.1)),
@@ -70,8 +70,6 @@ class TestEntropyBitwiseDecoder:
             d = pickle.load(f)
         encoded = d['encoded']
         corrupted = d['corrupted']
-        channel = bsc_llr(p=0.02)
-        channel_llr = channel(np.array(corrupted, dtype=np.int_))
         decoder = EntropyBitwiseFlippingDecoder(DecoderWiFi(spec=WiFiSpecCode.N1944_R23, max_iter=20,
                                                             channel_model=bsc_llr(p=0.1)),
                                                 model_length=1224, entropy_threshold=0.36, min_data=1)
@@ -82,8 +80,6 @@ class TestEntropyBitwiseDecoder:
         with open("tests/test_data/entropy_bitwise_decoder_unsuccessful_decode.pickle", 'rb') as f:
             d = pickle.load(f)
         corrupted = d['corrupted']
-        channel = bsc_llr(p=0.1)
-        channel_llr = channel(np.array(corrupted, dtype=np.int_))
         decoder = EntropyBitwiseFlippingDecoder(DecoderWiFi(spec=WiFiSpecCode.N1944_R23, max_iter=20,
                                                             channel_model=bsc_llr(p=0.1)),
                                                 model_length=1224, entropy_threshold=0.36, min_data=1)
