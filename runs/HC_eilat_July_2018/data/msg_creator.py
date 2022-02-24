@@ -120,4 +120,4 @@ ten_sec_bin = [[int(b) for b in tx.get("bin")] for tx in all_msgs.get("100000")]
 twenty_sec_bin = [[int(b) for b in tx.get("bin")] for tx in all_msgs.get("200000")]
 thirty_sec_bin = [[int(b) for b in tx.get("bin")] for tx in all_msgs.get("300000")]
 savemat("binary_buffers.mat", {"five_sec_delay_binary": five_sec_bin, "ten_sec_delay_binary": ten_sec_bin,
-                                    "twenty_sec_delay_binary": twenty_sec_bin, "thirty_sec_delay_binary": thirty_sec_bin})
+                               "twenty_sec_delay_binary": twenty_sec_bin, "thirty_sec_delay_binary": thirty_sec_bin})
