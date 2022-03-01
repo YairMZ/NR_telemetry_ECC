@@ -68,10 +68,10 @@ class MavlinkRectifyingDecoder(Decoder):
                 bad_p = bsc_llr(p=self.bad_p*n/bad_bits)
                 channel_input = bad_p(hard_channel_input)
                 channel_input[good_bits] = self.good_p(estimate[good_bits])
-                ## for debug
-                o = np.array(channel_llr[good_bits] < 0, dtype=np.int_)
-                new = np.array(estimate[good_bits] < 0, dtype=np.int_)
-                t = sum(new != o)
+                # for debug
+                # o = np.array(channel_input[good_bits] < 0, dtype=np.int_)
+                # new = np.array(estimate[good_bits] < 0, dtype=np.int_)
+                # t = sum(new != o)
             else:
                 break
 
