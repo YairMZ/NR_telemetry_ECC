@@ -1,0 +1,5 @@
+# run pure LDPC as well the entropy decoded LDPC on all samples
+python simulated_data_entropy_bitwise_decoder_script_mp.py --minflip 0.02 --maxflip 0.07 --nflips 30 --ldpciterations 20 --ent_threshold 0.36  --clipping_factor 2 --min_data 5 --window_len 30
+
+# run pure LDPC as well the rectified LDPC
+#python simulated_data_rectify_decoding.py --minflip $((5*1e-3)) --maxflip $((75*1e-3)) --nflips 20 #--ldpciterations 5 --segiterations 2
