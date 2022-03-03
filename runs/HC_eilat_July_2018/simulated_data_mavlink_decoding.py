@@ -10,7 +10,6 @@ from ldpc.decoder import bsc_llr, DecoderWiFi
 from decoders import MavlinkRectifyingDecoder
 from inference import BufferSegmentation
 from protocol_meta import dialect_meta as meta
-
 import random
 from utils.bit_operations import hamming_distance
 from typing import Any
@@ -21,7 +20,7 @@ import os
 
 
 parser = argparse.ArgumentParser(description='Run decoding on simulated data using multiprocessing.')
-parser.add_argument("--N", default=10, help="max number of transmissions to consider", type=int)
+parser.add_argument("--N", default=0, help="max number of transmissions to consider", type=int)
 parser.add_argument("--minflip", default=47*1e-3, help="minimal bit flip probability to consider", type=float)
 parser.add_argument("--maxflip", default=60*1e-3, help="maximal bit flip probability to consider", type=float)
 parser.add_argument("--nflips", default=3, help="number of bit flips to consider", type=int)
@@ -71,6 +70,13 @@ print("number of ldpc decoder iterations: ", ldpc_iterations)
 print("number of segmentation iterations: ", seg_iter)
 print("good probability: ", args.goodp)
 print("bad probability: ", args.badp)
+
+cmd = f'python {__file__} --minflip {str(args.minflip)} --maxflip {str(args.maxflip)} --nflips {str(args.nflips)} ' +\
+      " --ldpciterations " + str(ldpc_iterations) + " --segiterations " + str(seg_iter) + " --goodp " +\
+      str(args.goodp) + " --badp " + str(args.badp)
+
+if args.N > 0:
+    cmd += f' --N {n}'
 
 for p in bit_flip_p:
     channel = bsc_llr(p=p)
@@ -150,6 +156,8 @@ timestamp = str(datetime.date.today()) + "_" + str(datetime.datetime.now().hour)
 path = os.path.join("results/", timestamp)
 os.mkdir(path)
 
+with open(os.path.join(path, "cmd.txt"), 'w') as f:
+    f.write(cmd)
 with open(os.path.join(path, timestamp + '_simulation_rectify_vs_pure_LDPC.pickle'), 'wb') as f:
     pickle.dump(results, f)
 
