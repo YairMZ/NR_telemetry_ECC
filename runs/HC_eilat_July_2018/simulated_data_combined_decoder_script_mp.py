@@ -18,7 +18,7 @@ from multiprocessing import Pool
 
 
 parser = argparse.ArgumentParser(description='Run decoding on simulated data using multiprocessing.')
-parser.add_argument("--N", default=10, help="max number of transmissions to consider", type=int)
+parser.add_argument("--N", default=0, help="max number of transmissions to consider", type=int)
 parser.add_argument("--minflip", default=36*1e-3, help="minimal bit flip probability to consider", type=float)
 parser.add_argument("--maxflip", default=55*1e-3, help="maximal bit flip probability to consider", type=float)
 parser.add_argument("--nflips", default=5, help="number of bit flips to consider", type=int)
