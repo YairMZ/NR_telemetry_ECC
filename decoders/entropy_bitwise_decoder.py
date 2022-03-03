@@ -189,7 +189,7 @@ class EntropyBitwiseFlippingDecoder(Decoder):
         self.distribution = prob(self.model_data)
         self.entropy = entropy(self.distribution)
 
-    def model_prediction(self, observation: NDArray[np.float_]) -> NDArray[np.float_]:
+    def model_prediction(self, observation: NDArray[np.int_]) -> NDArray[np.int_]:
         """Responsible for making predictions regarding originally sent data, based on recent observations and model.
         If sufficient data exists, the llr is computed based on the model, and is added to the observation.
         :param observation: recent observation regrading which a prediction is required.
