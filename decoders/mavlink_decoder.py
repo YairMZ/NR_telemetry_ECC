@@ -37,7 +37,7 @@ class MavlinkRectifyingDecoder(Decoder):
         self.good_p = bsc_llr(p=good_p)
         self.v_node_uids = [node.uid for node in self.ldpc_decoder.ordered_vnodes()][:self.k]  # it is assumed first k vnodes
         # hold information
-        super().__init__(DecoderType.RECTIFYING)
+        super().__init__(DecoderType.MAVLINK)
 
     def decode_buffer(self, channel_llr: Sequence[np.float_]) -> tuple[NDArray[np.int_], NDArray[np.float_], bool, int, int]:
         """decodes a buffer
@@ -58,7 +58,7 @@ class MavlinkRectifyingDecoder(Decoder):
             estimate, llr, decode_success, iterations = self.ldpc_decoder.decode(channel_input, self.ldpc_iterations)
             iterations_to_convergence += iterations
             info_bytes = self.ldpc_decoder.info_bits(estimate).tobytes()
-            parts, validity, structure = self.bs.segment_buffer(info_bytes[:self.k])
+            parts, validity, structure = self.bs.segment_buffer(info_bytes)
             if decode_success:
                 break
             good_bits = np.flatnonzero(np.repeat(parts != MsgParts.UNKNOWN, 8))
