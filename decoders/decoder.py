@@ -9,7 +9,8 @@ import numpy as np
 class DecoderType(Enum):
     """Types of decoders"""
     ENTROPY = auto()
-    RECTIFYING = auto()
+    MAVLINK = auto()
+    COMBINED = auto()
 
 
 class Decoder(ABC):
