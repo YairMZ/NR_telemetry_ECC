@@ -152,7 +152,8 @@ for p in bit_flip_p:
     results[-1]["max_ldpc_iterations"] = ldpc_iterations
 
 
-timestamp = str(datetime.date.today()) + "_" + str(datetime.datetime.now().hour) + "_" + str(datetime.datetime.now().minute)
+timestamp = f'{datetime.date.today()}_{datetime.datetime.now().hour}_{datetime.datetime.now().minute}_'\
+            f'{datetime.datetime.now().second}'
 path = os.path.join("results/", timestamp)
 os.mkdir(path)
 
@@ -165,7 +166,6 @@ with open(os.path.join(path, timestamp + '_simulation_rectify_vs_pure_LDPC.pickl
 raw_ber = np.array([p['raw_ber'] for p in results])
 ldpc_ber = np.array([p['ldpc_decoder_ber'] for p in results])
 rectified_ber = np.array([p['rectified_decoder_ber'] for p in results])
-single_rect_ber = np.array([p['single_rectified_decoder_ber'] for p in results])
 fig = plt.figure()
 plt.plot(raw_ber, ldpc_ber, 'bo', raw_ber, raw_ber, 'g^', raw_ber, rectified_ber, 'r*')
 fig.savefig(os.path.join(path, "ber_vs_error_p.eps"), dpi=150)
@@ -173,12 +173,10 @@ fig.savefig(os.path.join(path, "ber_vs_error_p.eps"), dpi=150)
 figure = plt.figure()
 ldpc_buffer_success_rate = np.array([p['ldpc_buffer_success_rate'] for p in results])
 rectified_buffer_success_rate = np.array([p['rectified_buffer_success_rate'] for p in results])
-single_rect_buffer_success_rate = np.array([p['single_rectified_buffer_success_rate'] for p in results])
 plt.plot(raw_ber, ldpc_buffer_success_rate, 'bo', raw_ber, rectified_buffer_success_rate, 'r*')
 figure.savefig(os.path.join(path, "buffer_success_rate_vs_error_p.eps"), dpi=150)
 
 summary = {"args": args, "raw_ber": raw_ber, "ldpc_ber": ldpc_ber, "rectified_ber": rectified_ber,
-           "single_rect_ber": single_rect_ber, "single_rect_buffer_success_rate": single_rect_buffer_success_rate,
            "ldpc_buffer_success_rate": ldpc_buffer_success_rate,
            "rectified_buffer_success_rate": rectified_buffer_success_rate}
 with open(os.path.join(path, timestamp + '_summary_rectify_vs_pure_LDPC.pickle'), 'wb') as f:
