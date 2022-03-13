@@ -73,7 +73,7 @@ class CombinedDecoder(Decoder):
         hard_channel_input: NDArray[np.int_] = np.array(channel_input < 0, dtype=np.int_)
         iterations_to_convergence = 0
         for idx in range(self.segmentation_iterations + 1):
-            estimate, llr, decode_success, iterations = self.ldpc_decoder.decode(channel_input)
+            estimate, llr, decode_success, iterations, syndrome, vnode_validity = self.ldpc_decoder.decode(channel_input)
             iterations_to_convergence += iterations
             model_bits = estimate[self.model_bits_idx]
             model_bytes: bytes = np.packbits(model_bits).tobytes()
