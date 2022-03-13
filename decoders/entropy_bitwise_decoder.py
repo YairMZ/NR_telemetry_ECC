@@ -19,7 +19,7 @@ class EntropyBitwiseDecoder(Decoder):
     """
 
     def __init__(self, ldpc_decoder: LogSpaDecoder, model_length: int, entropy_threshold: float, clipping_factor: int,
-                 min_data: int, window_length: Optional[int] = None) -> None:
+                 min_data: int, window_length: Optional[int] = None, model: Optional[NDArray[np.float_]] = None) -> None:
         """
         Create a new decoder
         :param ldpc_decoder: decoder for ldpc code used
@@ -28,6 +28,7 @@ class EntropyBitwiseDecoder(Decoder):
         :param clipping_factor: the maximum model llr is equal to the clipping_factor times the maximal channel llr
         :param min_data: the minimum amount of good buffers to be used in the learning stage before attempting to rectify llr
         :param window_length: number of last messages to consider when evaluating distribution and entropy. If none all
+        :param model: if not None, holds a distribution of bits instead of learning it.
         previous messages are considered.
         """
         self.segmentor: BufferSegmentation = BufferSegmentation(meta.protocol_parser)
@@ -39,9 +40,15 @@ class EntropyBitwiseDecoder(Decoder):
         self.model_bits_idx = np.flatnonzero(self.model_bits_idx)  # bit indices (among codeword bits) of model bits
         self.clipping_factor = clipping_factor  # The model llr is clipped to +-clipping_factor * max_chanel_llr
         self.window_length = window_length
+        if model is not None:
+            self.distribution: NDArray[np.float_] = model   # estimated distribution model
+            self.entropy: NDArray[np.float_] = entropy(self.distribution)  # estimated entropy of distribution model
+            self.predefined_model = True
+        else:
+            self.distribution = np.array([])
+            self.entropy = np.array([])
+            self.predefined_model = False
         self.model_data: NDArray[np.uint8] = np.array([])  # 2d array, each column is a sample
-        self.distribution: NDArray[np.float_] = np.array([])  # estimated distribution model
-        self.entropy: NDArray[np.float_] = np.array([])  # estimated entropy of distribution model
         self.structural_elements: NDArray[np.int_] = np.array([])  # index of structural (low entropy) elements among codeword
         self.min_data = min_data  # minimum amount of good buffers used in the learning stage before attempting to rectify llr
         super().__init__(DecoderType.ENTROPY)
@@ -80,6 +87,8 @@ class EntropyBitwiseDecoder(Decoder):
         """update model of data
         :param bits: hard estimate for bit values, assumed to be correct.
         """
+        if self.predefined_model:
+            return
         if len(bits) != self.model_length:
             raise IncorrectBufferLength()
         arr = bits[np.newaxis]
@@ -101,7 +110,8 @@ class EntropyBitwiseDecoder(Decoder):
         self.structural_elements = self.model_bits_idx[self.entropy < self.entropy_threshold]
         # model llr is calculated as log(Pr(c=0 | model) / Pr(c=1| model))
         llr = observation.copy()
-        if self.model_data.size > 0 and self.model_data.shape[1] >= self.min_data:  # if sufficient previous data exists
+        if self.predefined_model or (self.model_data.size > 0 and self.model_data.shape[1] >= self.min_data):
+            # if sufficient previous data exists
             clipping = self.clipping_factor * max(llr)  # llr s clipped within +-clipping
             llr[self.structural_elements] += np.clip(  # add model llr to the observation
                 np.log(
