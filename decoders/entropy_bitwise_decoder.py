@@ -57,7 +57,7 @@ class EntropyBitwiseDecoder(Decoder):
             - number of iterations until breaking
             - number of MAVLink messages found within buffer
         """
-        estimate, llr, decode_success, iterations = self.ldpc_decoder.decode(channel_llr)
+        estimate, llr, decode_success, iterations, syndrome, vnode_validity = self.ldpc_decoder.decode(channel_llr)
         if decode_success:
             model_bits = estimate[self.model_bits_idx]
             model_bytes: bytes = np.packbits(model_bits).tobytes()
@@ -68,7 +68,7 @@ class EntropyBitwiseDecoder(Decoder):
 
         # rectify llr
         model_llr = self.model_prediction(channel_llr)  # type: ignore
-        estimate, llr, decode_success, iterations = self.ldpc_decoder.decode(model_llr)
+        estimate, llr, decode_success, iterations, syndrome, vnode_validity = self.ldpc_decoder.decode(model_llr)
         model_bits = estimate[self.model_bits_idx]
         model_bytes = np.packbits(model_bits).tobytes()
         msg_parts, validity, structure = self.segmentor.segment_buffer(model_bytes)
@@ -156,7 +156,7 @@ class EntropyBitwiseFlippingDecoder(Decoder):
             - number of iterations until breaking
             - number of MAVLink messages found within buffer
         """
-        estimate, llr, decode_success, iterations = self.ldpc_decoder.decode(channel_word)
+        estimate, llr, decode_success, iterations, syndrome, vnode_validity = self.ldpc_decoder.decode(channel_word)
         if decode_success:
             model_bits = estimate[self.model_bits_idx]
             model_bytes: bytes = np.packbits(model_bits).tobytes()
@@ -167,7 +167,7 @@ class EntropyBitwiseFlippingDecoder(Decoder):
 
         # use model
         model_word = self.model_prediction(channel_word)  # type: ignore
-        estimate, llr, decode_success, iterations = self.ldpc_decoder.decode(model_word)
+        estimate, llr, decode_success, iterations, syndrome, vnode_validity = self.ldpc_decoder.decode(model_word)
         model_bits = estimate[self.model_bits_idx]
         model_bytes = np.packbits(model_bits).tobytes()
         msg_parts, validity, structure = self.segmentor.segment_buffer(model_bytes)
