@@ -41,3 +41,5 @@ plt.ylabel("binary entropy of each bit")
 plt.show()
 print("percent of structure bits: ", np.sum(bit_ent < 0.2)*100/len(bit_ent), "%")
 
+with open('data_model.pickle', 'wb') as f:
+    pickle.dump({"dist": bit_dist, "entropy": bit_ent}, f)
