@@ -55,7 +55,7 @@ class MavlinkRectifyingDecoder(Decoder):
         decode_success = False
         iterations_to_convergence = 0
         for idx in range(self.segmentation_iterations + 1):
-            estimate, llr, decode_success, iterations = self.ldpc_decoder.decode(channel_input, self.ldpc_iterations)
+            estimate, llr, decode_success, iterations, syndrome, vnode_validity = self.ldpc_decoder.decode(channel_input, self.ldpc_iterations)
             iterations_to_convergence += iterations
             info_bytes = self.ldpc_decoder.info_bits(estimate).tobytes()
             parts, validity, structure = self.bs.segment_buffer(info_bytes)
