@@ -41,7 +41,8 @@ class EntropyBitwiseDecoder(Decoder):
         self.clipping_factor = clipping_factor  # The model llr is clipped to +-clipping_factor * max_chanel_llr
         self.window_length = window_length
         if model is not None:
-            self.distribution: NDArray[np.float_] = model   # estimated distribution model
+            self.model_length = min(model.shape[0], self.model_bits_idx.size)
+            self.distribution: NDArray[np.float_] = model[:self.model_length, :]   # estimated distribution model
             self.entropy: NDArray[np.float_] = entropy(self.distribution)  # estimated entropy of distribution model
             self.predefined_model = True
         else:
@@ -149,7 +150,8 @@ class EntropyBitwiseFlippingDecoder(Decoder):
         self.model_bits_idx = np.flatnonzero(self.model_bits_idx)  # bit indices (among codeword bits) of model bits
         self.window_length = window_length
         if model is not None:
-            self.distribution: NDArray[np.float_] = model   # estimated distribution model
+            self.model_length = min(model.shape[0], self.model_bits_idx.size)
+            self.distribution: NDArray[np.float_] = model[:self.model_length, :]   # estimated distribution model
             self.entropy: NDArray[np.float_] = entropy(self.distribution)  # estimated entropy of distribution model
             self.predefined_model = True
         else:
@@ -162,7 +164,8 @@ class EntropyBitwiseFlippingDecoder(Decoder):
         self.min_data = min_data  # minimum amount of good buffers used in the learning stage before attempting to rectify llr
         super().__init__(DecoderType.ENTROPY)
 
-    def decode_buffer(self, channel_word: Sequence[np.float_]) -> tuple[NDArray[np.int_], NDArray[np.float_], bool, int, int]:
+    def decode_buffer(self, channel_word: Sequence[np.float_]) -> tuple[NDArray[np.int_], NDArray[np.float_], bool, int,
+                                                                        NDArray[np.int_], NDArray[np.int_], int]:
         """decodes a buffer
         :param channel_word: channel of hard bits to decode
         :return: return a tuple (estimated_bits, llr, decode_success, no_iterations, no of mavlink messages found)
@@ -180,7 +183,7 @@ class EntropyBitwiseFlippingDecoder(Decoder):
             msg_parts, validity, structure = self.segmentor.segment_buffer(model_bytes)
             if MsgParts.UNKNOWN not in msg_parts:  # buffer fully recovered
                 self.update_model(model_bits)
-            return estimate, llr, decode_success, iterations, len(structure)
+            return estimate, llr, decode_success, iterations, syndrome, vnode_validity, len(structure)
 
         # use model
         model_word = self.model_prediction(channel_word)  # type: ignore
@@ -190,7 +193,7 @@ class EntropyBitwiseFlippingDecoder(Decoder):
         msg_parts, validity, structure = self.segmentor.segment_buffer(model_bytes)
         if MsgParts.UNKNOWN not in msg_parts:  # buffer fully recovered
             self.update_model(model_bits)
-        return estimate, llr, decode_success, iterations, len(structure)
+        return estimate, llr, decode_success, iterations, syndrome, vnode_validity, len(structure)
 
     def update_model(self, bits: NDArray[np.int_]) -> None:
         """update model of data
@@ -214,7 +217,7 @@ class EntropyBitwiseFlippingDecoder(Decoder):
         :param observation: recent observation regrading which a prediction is required.
         :return: an array of llr based on model predictions
         """
-        if (self.model_data.size <= 0 or self.model_data.shape[1] < self.min_data) and not self.predefined_model:
+        if (not self.predefined_model) and (self.model_data.size <= 0 or self.model_data.shape[1] < self.min_data):
             return observation
         # infer structure
         # index of structural (low entropy) elements among codeword
