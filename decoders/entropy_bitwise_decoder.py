@@ -129,7 +129,7 @@ class EntropyBitwiseFlippingDecoder(Decoder):
     """
 
     def __init__(self, ldpc_decoder: LogSpaDecoder, model_length: int, entropy_threshold: float, min_data: int,
-                 window_length: Optional[int] = None) -> None:
+                 window_length: Optional[int] = None, model: Optional[NDArray[np.float_]] = None) -> None:
         """
         Create a new decoder
         :param ldpc_decoder: decoder for ldpc code used
@@ -138,6 +138,7 @@ class EntropyBitwiseFlippingDecoder(Decoder):
         :param min_data: the minimum amount of good buffers to be used in the learning stage before attempting to rectify llr
         :param window_length: number of last messages to consider when evaluating distribution and entropy. If none all
         previous messages are considered.
+        :param model: if not None, holds a distribution of bits instead of learning it.
         """
         self.segmentor: BufferSegmentation = BufferSegmentation(meta.protocol_parser)
         self.ldpc_decoder: LogSpaDecoder = ldpc_decoder
@@ -147,9 +148,15 @@ class EntropyBitwiseFlippingDecoder(Decoder):
         self.model_bits_idx[model_length:] = False
         self.model_bits_idx = np.flatnonzero(self.model_bits_idx)  # bit indices (among codeword bits) of model bits
         self.window_length = window_length
+        if model is not None:
+            self.distribution: NDArray[np.float_] = model   # estimated distribution model
+            self.entropy: NDArray[np.float_] = entropy(self.distribution)  # estimated entropy of distribution model
+            self.predefined_model = True
+        else:
+            self.distribution = np.array([])
+            self.entropy = np.array([])
+            self.predefined_model = False
         self.model_data: NDArray[np.uint8] = np.array([])  # 2d array, each column is a sample
-        self.distribution: NDArray[np.float_] = np.array([])  # estimated distribution model
-        self.entropy: NDArray[np.float_] = np.array([])  # estimated entropy of distribution model
         self.structural_elements: NDArray[np.int_] = np.array([])  # index of structural (low entropy) elements among codeword
         self.structural_values: NDArray[np.int_] = np.array([])  # value of structural (low entropy) elements among codeword
         self.min_data = min_data  # minimum amount of good buffers used in the learning stage before attempting to rectify llr
@@ -189,6 +196,8 @@ class EntropyBitwiseFlippingDecoder(Decoder):
         """update model of data
         :param bits: hard estimate for bit values, assumed to be correct.
         """
+        if self.predefined_model:
+            return
         if len(bits) != self.model_length:
             raise IncorrectBufferLength()
         arr = bits[np.newaxis]
@@ -205,7 +214,7 @@ class EntropyBitwiseFlippingDecoder(Decoder):
         :param observation: recent observation regrading which a prediction is required.
         :return: an array of llr based on model predictions
         """
-        if self.model_data.size <= 0 or self.model_data.shape[1] < self.min_data:
+        if (self.model_data.size <= 0 or self.model_data.shape[1] < self.min_data) and not self.predefined_model:
             return observation
         # infer structure
         # index of structural (low entropy) elements among codeword
