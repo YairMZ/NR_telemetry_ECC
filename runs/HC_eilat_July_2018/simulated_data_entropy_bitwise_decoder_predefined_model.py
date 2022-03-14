@@ -53,6 +53,8 @@ for binary_data in five_sec_bin[:n]:
     padded = binary_data + Bits(uint=random.getrandbits(pad_len), length=pad_len)
     encoded.append(encoder.encode(padded))
 
+for _ in range(3):  # generate 8 times more buffers for statistical reproducibility
+    encoded.extend(encoded)
 n = len(encoded)
 
 with open('analysis/data_model.pickle', 'rb') as f:
