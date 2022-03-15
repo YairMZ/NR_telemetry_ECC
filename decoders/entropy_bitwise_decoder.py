@@ -54,7 +54,8 @@ class EntropyBitwiseDecoder(Decoder):
         self.min_data = min_data  # minimum amount of good buffers used in the learning stage before attempting to rectify llr
         super().__init__(DecoderType.ENTROPY)
 
-    def decode_buffer(self, channel_llr: Sequence[np.float_]) -> tuple[NDArray[np.int_], NDArray[np.float_], bool, int, int]:
+    def decode_buffer(self, channel_llr: Sequence[np.float_]) -> tuple[NDArray[np.int_], NDArray[np.float_], bool, int,
+                                                                       NDArray[np.int_], NDArray[np.int_], int]:
         """decodes a buffer
         :param channel_llr: channel llr of bits to decode
         :return: return a tuple (estimated_bits, llr, decode_success, no_iterations, no of mavlink messages found)
@@ -72,7 +73,7 @@ class EntropyBitwiseDecoder(Decoder):
             msg_parts, validity, structure = self.segmentor.segment_buffer(model_bytes)
             if MsgParts.UNKNOWN not in msg_parts:  # buffer fully recovered
                 self.update_model(model_bits)
-            return estimate, llr, decode_success, iterations, len(structure)
+            return estimate, llr, decode_success, iterations, syndrome, vnode_validity, len(structure)
 
         # rectify llr
         model_llr = self.model_prediction(channel_llr)  # type: ignore
@@ -82,7 +83,7 @@ class EntropyBitwiseDecoder(Decoder):
         msg_parts, validity, structure = self.segmentor.segment_buffer(model_bytes)
         if MsgParts.UNKNOWN not in msg_parts:  # buffer fully recovered
             self.update_model(model_bits)
-        return estimate, llr, decode_success, iterations, len(structure)
+        return estimate, llr, decode_success, iterations, syndrome, vnode_validity, len(structure)
 
     def update_model(self, bits: NDArray[np.int_]) -> None:
         """update model of data
@@ -164,8 +165,7 @@ class EntropyBitwiseFlippingDecoder(Decoder):
         self.min_data = min_data  # minimum amount of good buffers used in the learning stage before attempting to rectify llr
         super().__init__(DecoderType.ENTROPY)
 
-    def decode_buffer(self, channel_word: Sequence[np.float_]) -> tuple[NDArray[np.int_], NDArray[np.float_], bool, int,
-                                                                        NDArray[np.int_], NDArray[np.int_], int]:
+    def decode_buffer(self, channel_word: Sequence[np.float_]) -> tuple[NDArray[np.int_], NDArray[np.float_], bool, int, int]:
         """decodes a buffer
         :param channel_word: channel of hard bits to decode
         :return: return a tuple (estimated_bits, llr, decode_success, no_iterations, no of mavlink messages found)
@@ -183,7 +183,7 @@ class EntropyBitwiseFlippingDecoder(Decoder):
             msg_parts, validity, structure = self.segmentor.segment_buffer(model_bytes)
             if MsgParts.UNKNOWN not in msg_parts:  # buffer fully recovered
                 self.update_model(model_bits)
-            return estimate, llr, decode_success, iterations, syndrome, vnode_validity, len(structure)
+            return estimate, llr, decode_success, iterations, len(structure)
 
         # use model
         model_word = self.model_prediction(channel_word)  # type: ignore
@@ -193,7 +193,7 @@ class EntropyBitwiseFlippingDecoder(Decoder):
         msg_parts, validity, structure = self.segmentor.segment_buffer(model_bytes)
         if MsgParts.UNKNOWN not in msg_parts:  # buffer fully recovered
             self.update_model(model_bits)
-        return estimate, llr, decode_success, iterations, syndrome, vnode_validity, len(structure)
+        return estimate, llr, decode_success, iterations, len(structure)
 
     def update_model(self, bits: NDArray[np.int_]) -> None:
         """update model of data
