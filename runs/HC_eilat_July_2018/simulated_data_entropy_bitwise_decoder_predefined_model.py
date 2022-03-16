@@ -155,6 +155,10 @@ def simulation_step(p: float) -> dict[str, Any]:
 
     step_results["n"] = n
     step_results["max_ldpc_iterations"] = ldpc_iterations
+    timestamp = f'{str(datetime.date.today())}_{str(datetime.datetime.now().hour)}_{str(datetime.datetime.now().minute)}_' \
+                f'{str(datetime.datetime.now().second)}'
+    with open(f'{timestamp}_{p}_simulation_entropy_predefined.pickle', 'wb') as f:
+        pickle.dump(step_results, f)
     return step_results
 
 
