@@ -174,7 +174,7 @@ if __name__ == '__main__':
     with open(os.path.join(path, "cmd.txt"), 'w') as f:
         f.write(cmd)
 
-    with open(os.path.join(path, timestamp + '_simulation_entropy_vs_pure_LDPC.pickle'), 'wb') as f:
+    with open(os.path.join(path, timestamp + '_simulation_entropy_vs_pure_LDPC_predefined_model.pickle'), 'wb') as f:
         pickle.dump(results, f)
 
     raw_ber = np.array([p['raw_ber'] for p in results])
@@ -200,5 +200,5 @@ if __name__ == '__main__':
     summary = {"args": args, "raw_ber": raw_ber, "ldpc_ber": ldpc_ber, "entropy_ber": entropy_ber,
                "ldpc_buffer_success_rate": ldpc_buffer_success_rate,
                "entropy_buffer_success_rate": entropy_buffer_success_rate}
-    with open(os.path.join(path, timestamp + '_summary_entropy_vs_pure_LDPC.pickle'), 'wb') as f:
+    with open(os.path.join(path, timestamp + '_summary_entropy_vs_pure_LDPC_predefined_model.pickle'), 'wb') as f:
         pickle.dump(summary, f)
