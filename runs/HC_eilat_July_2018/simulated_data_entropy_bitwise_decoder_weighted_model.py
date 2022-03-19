@@ -18,7 +18,7 @@ from multiprocessing import Pool
 
 
 parser = argparse.ArgumentParser(description='Run decoding on simulated data using multiprocessing.')
-parser.add_argument("--N", default=30, help="max number of transmissions to consider", type=int)
+parser.add_argument("--N", default=0, help="max number of transmissions to consider", type=int)
 parser.add_argument("--minflip", default=36*1e-3, help="minimal bit flip probability to consider", type=float)
 parser.add_argument("--maxflip", default=55*1e-3, help="maximal bit flip probability to consider", type=float)
 parser.add_argument("--nflips", default=3, help="number of bit flips to consider", type=int)
@@ -26,13 +26,15 @@ parser.add_argument("--ldpciterations", default=10, help="number of iterations o
 parser.add_argument("--ent_threshold", default=0.36, help="entropy threshold to be used in entropy decoder", type=float)
 parser.add_argument("--window_len", default=0, help="number of previous samples to use, if 0 all are used", type=int)
 parser.add_argument("--clipping_factor", default=2, help="dictates maximal and minimal llr", type=int)
-
+parser.add_argument("--multiply_data", default=0, help="multiplies amount of buffers by 2 to power of arg", type=int)
+parser.add_argument("--processes", default=0, help="multiplies amount of buffers by 2 to power of arg", type=int)
 
 args = parser.parse_args()
 
 ldpc_iterations = args.ldpciterations
 thr = args.ent_threshold
 clipping_factor = args.clipping_factor
+processes = args.processes if args.processes > 0 else None
 
 encoder = EncoderWiFi(WiFiSpecCode.N1944_R23)
 bs = BufferSegmentation(meta.protocol_parser)
@@ -53,6 +55,9 @@ for binary_data in five_sec_bin[:n]:
     pad_len = encoder.k - len(binary_data)
     padded = binary_data + Bits(uint=random.getrandbits(pad_len), length=pad_len)
     encoded.append(encoder.encode(padded))
+
+for _ in range(args.multiply_data):  # generate 8 times more buffers for statistical reproducibility
+    encoded.extend(encoded)
 
 model_length = len(five_sec_bin[0])
 n = len(encoded)
@@ -138,11 +143,16 @@ def simulation_step(p: float) -> dict[str, Any]:
 
     step_results["n"] = n
     step_results["max_ldpc_iterations"] = ldpc_iterations
+
+    timestamp = f'{str(datetime.date.today())}_{str(datetime.datetime.now().hour)}_{str(datetime.datetime.now().minute)}_' \
+                f'{str(datetime.datetime.now().second)}'
+    with open(f'{timestamp}_{p}_simulation_entropy_weighted.pickle', 'wb') as f:
+        pickle.dump(step_results, f)
     return step_results
 
 
 if __name__ == '__main__':
-    with Pool() as pool:
+    with Pool(processes=processes) as pool:
         results: list[dict[str, Any]] = pool.map(simulation_step, bit_flip_p)
 
     timestamp = f'{str(datetime.date.today())}_{str(datetime.datetime.now().hour)}_{str(datetime.datetime.now().minute)}_' \

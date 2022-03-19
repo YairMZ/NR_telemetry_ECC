@@ -295,7 +295,10 @@ class EntropyBitwiseWeightedDecoder(Decoder):
         msg_parts, validity, structure = self.segmentor.segment_buffer(model_bytes)
         if MsgParts.UNKNOWN not in msg_parts:  # buffer fully recovered
             self.update_model_a(model_bits)
-        self.update_model_b(model_bits)
+            self.update_model_b(model_bits)
+        else:  # update model from channel if sata is bad
+            channel_bits = np.array(channel_llr < 0, dtype=np.int_)[self.model_bits_idx]
+            self.update_model_b(channel_bits)
         return estimate, llr, decode_success, iterations, len(structure)
 
     def update_model_a(self, bits: NDArray[np.int_]) -> None:
@@ -320,13 +323,13 @@ class EntropyBitwiseWeightedDecoder(Decoder):
             raise IncorrectBufferLength()
         arr = bits[np.newaxis]
         self.model_b_data = arr.T if self.model_b_data.size == 0 else np.append(self.model_b_data, arr.T, axis=1)
-        if (self.window_length is not None) and self.model_b_data.shape[1] > self.window_length:
-            # trim old messages according to window
-            self.model_b_data = self.model_b_data[:, self.model_b_data.shape[1] - self.window_length:]
+        # if (self.window_length is not None) and self.model_b_data.shape[1] > self.window_length:
+        #     # trim old messages according to window
+        #     self.model_b_data = self.model_b_data[:, self.model_b_data.shape[1] - self.window_length:]
         self.b_distribution = prob(self.model_b_data)
         self.b_entropy = entropy(self.b_distribution)
 
-    def model_prediction(self, llr: NDArray[np.float_]) -> NDArray[np.float_]:
+    def model_prediction(self, observation: NDArray[np.float_]) -> NDArray[np.float_]:
         """Responsible for making predictions regarding originally sent data, based on recent observations and model.
         If sufficient data exists, the llr is computed based on the model, and is added to the observation.
         :param llr: recent observation regrading which a prediction is required.
@@ -335,6 +338,7 @@ class EntropyBitwiseWeightedDecoder(Decoder):
         def model_confidence(model_size: int, center: int, slope: float) -> np.float_:
             return 0 if model_size <= 1 else 1/(1+np.exp(-(model_size-center)*slope, dtype=np.float_))
 
+        llr = observation.copy()
         # infer structure
         # index of structural (low entropy) elements among codeword
         a_structural_elements: NDArray[np.int_] = self.model_bits_idx[self.a_entropy < self.entropy_threshold]
@@ -343,7 +347,7 @@ class EntropyBitwiseWeightedDecoder(Decoder):
         a_size = self.model_a_data.shape[1] if self.model_a_data.size > 0 else 0
         b_size = self.model_b_data.shape[1] if self.model_b_data.size > 0 else 0
         a_confidence = model_confidence(a_size, 15, 0.35)
-        b_confidence = model_confidence(b_size, 20, 0.25)  # consider window size when setting these
+        b_confidence = model_confidence(b_size, 40, 0.35)  # consider window size when setting these
         clipping = self.clipping_factor * max(llr)  # llr s clipped within +-clipping
 
         # add model llr to the observation
@@ -352,7 +356,7 @@ class EntropyBitwiseWeightedDecoder(Decoder):
                 (np.finfo(np.float_).eps + self.a_distribution[:, 0])/(self.a_distribution[:, 1] + np.finfo(np.float_).eps)
             )[self.a_entropy < self.entropy_threshold]
         if b_confidence > 0:
-            llr[b_structural_elements] += np.log(
+            llr[b_structural_elements] += b_confidence*np.log(
                 (np.finfo(np.float_).eps + self.b_distribution[:, 0]) / (self.b_distribution[:, 1] + np.finfo(np.float_).eps)
             )[self.b_entropy < self.entropy_threshold]
 
