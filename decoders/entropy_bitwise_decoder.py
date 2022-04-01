@@ -239,8 +239,9 @@ class EntropyBitwiseWeightedDecoder(Decoder):
     When enough good data exists the model based on bad data is discarded.
     """
 
-    def __init__(self, ldpc_decoder: LogSpaDecoder, model_length: int, entropy_threshold: float, clipping_factor: int,
-                 window_length: Optional[int] = None) -> None:
+    def __init__(self, ldpc_decoder: LogSpaDecoder, model_length: int, entropy_threshold: float, clipping_factor: float,
+                 window_length: Optional[int] = None, a_conf_center: int = 20, a_conf_slope: float = 0.35,
+                 b_conf_center: int = 40, b_conf_slope: float = 0.35, confidence: int = 0) -> None:
         """
         Create a new decoder
         :param ldpc_decoder: decoder for ldpc code used
@@ -264,9 +265,15 @@ class EntropyBitwiseWeightedDecoder(Decoder):
         self.a_entropy: NDArray[np.float_] = np.array([])
         self.b_distribution: NDArray[np.float_] = np.array([])
         self.b_entropy: NDArray[np.float_] = np.array([])
+        self.a_conf_center = a_conf_center
+        self.a_conf_slope = a_conf_slope
+        self.b_conf_center = b_conf_center
+        self.b_conf_slope = b_conf_slope
+        self.confidence = confidence
         super().__init__(DecoderType.ENTROPY)
 
-    def decode_buffer(self, channel_llr: Sequence[np.float_]) -> tuple[NDArray[np.int_], NDArray[np.float_], bool, int, int]:
+    def decode_buffer(self, channel_llr: Sequence[np.float_]) -> tuple[NDArray[np.int_], NDArray[np.float_], bool, int, int,
+    NDArray[np.float_],NDArray[np.float_]]:
         """decodes a buffer
         :param channel_llr: channel llr of bits to decode
         :return: return a tuple (estimated_bits, llr, decode_success, no_iterations, no of mavlink messages found)
@@ -285,7 +292,7 @@ class EntropyBitwiseWeightedDecoder(Decoder):
             if MsgParts.UNKNOWN not in msg_parts:  # buffer fully recovered
                 self.update_model_a(model_bits)
             self.update_model_b(model_bits)
-            return estimate, llr, decode_success, iterations, len(structure)
+            return estimate, llr, decode_success, iterations, len(structure), self.a_distribution, self.b_distribution
 
         # rectify llr
         model_llr = self.model_prediction(channel_llr)  # type: ignore
@@ -296,10 +303,10 @@ class EntropyBitwiseWeightedDecoder(Decoder):
         if MsgParts.UNKNOWN not in msg_parts:  # buffer fully recovered
             self.update_model_a(model_bits)
             self.update_model_b(model_bits)
-        else:  # update model from channel if sata is bad
+        else:  # update model from channel if data is bad
             channel_bits = np.array(channel_llr < 0, dtype=np.int_)[self.model_bits_idx]
             self.update_model_b(channel_bits)
-        return estimate, llr, decode_success, iterations, len(structure)
+        return estimate, llr, decode_success, iterations, len(structure), self.a_distribution, self.b_distribution
 
     def update_model_a(self, bits: NDArray[np.int_]) -> None:
         """update model of data. model_a uses only data which mavlink passed crc (and valid codeword)
@@ -323,9 +330,10 @@ class EntropyBitwiseWeightedDecoder(Decoder):
             raise IncorrectBufferLength()
         arr = bits[np.newaxis]
         self.model_b_data = arr.T if self.model_b_data.size == 0 else np.append(self.model_b_data, arr.T, axis=1)
-        # if (self.window_length is not None) and self.model_b_data.shape[1] > self.window_length:
-        #     # trim old messages according to window
-        #     self.model_b_data = self.model_b_data[:, self.model_b_data.shape[1] - self.window_length:]
+        # for bad modl use a window two times longer
+        if (self.window_length is not None) and self.model_b_data.shape[1] > 2*self.window_length:
+            # trim old messages according to window
+            self.model_b_data = self.model_b_data[:, self.model_b_data.shape[1] - 2*self.window_length:]
         self.b_distribution = prob(self.model_b_data)
         self.b_entropy = entropy(self.b_distribution)
 
@@ -346,9 +354,27 @@ class EntropyBitwiseWeightedDecoder(Decoder):
         # model llr is calculated as log(Pr(c=0 | model) / Pr(c=1| model))
         a_size = self.model_a_data.shape[1] if self.model_a_data.size > 0 else 0
         b_size = self.model_b_data.shape[1] if self.model_b_data.size > 0 else 0
-        a_confidence = model_confidence(a_size, 15, 0.35)
-        b_confidence = model_confidence(b_size, 40, 0.35)  # consider window size when setting these
+        a_confidence = model_confidence(a_size, self.a_conf_center, self.a_conf_slope)
+        b_confidence = model_confidence(b_size, self.b_conf_center, self.b_conf_slope)  # consider window size when setting these
+
         clipping = self.clipping_factor * max(llr)  # llr s clipped within +-clipping
+
+        if self.confidence == 0:
+            pass  # use separate confidence measures
+        elif self.confidence == 1:  # normalize sum of confidence to unity
+            s = a_confidence + b_confidence
+            if s > 0:
+                a_confidence *= a_confidence / s
+                b_confidence *= b_confidence / s
+        elif self.confidence == 1:  # normalize sum but prefer "good" model
+            s = 2*a_confidence + b_confidence
+            if s > 0:
+                a_confidence *= 2 * a_confidence / s
+                b_confidence *= b_confidence / s
+        elif self.confidence == 3:  # ignore bad model
+            b_confidence = 0
+        elif self.confidence == 3:  # use predetermined clipping
+            clipping = self.clipping_factor
 
         # add model llr to the observation
         if a_confidence > 0:

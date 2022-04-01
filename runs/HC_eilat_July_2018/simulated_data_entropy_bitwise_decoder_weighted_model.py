@@ -22,7 +22,7 @@ parser.add_argument("--N", default=0, help="max number of transmissions to consi
 parser.add_argument("--minflip", default=36*1e-3, help="minimal bit flip probability to consider", type=float)
 parser.add_argument("--maxflip", default=55*1e-3, help="maximal bit flip probability to consider", type=float)
 parser.add_argument("--nflips", default=3, help="number of bit flips to consider", type=int)
-parser.add_argument("--ldpciterations", default=10, help="number of iterations of  LDPC decoder", type=int)
+parser.add_argument("--ldpciterations", default=20, help="number of iterations of  LDPC decoder", type=int)
 parser.add_argument("--ent_threshold", default=0.36, help="entropy threshold to be used in entropy decoder", type=float)
 parser.add_argument("--window_len", default=0, help="number of previous samples to use, if 0 all are used", type=int)
 parser.add_argument("--clipping_factor", default=2, help="dictates maximal and minimal llr", type=int)
@@ -49,6 +49,7 @@ window_len = args.window_len if args.window_len > 0 else None
 # corrupt data
 rng = np.random.default_rng()
 bit_flip_p = np.linspace(args.minflip, args.maxflip, num=args.nflips)
+error_idx = rng.choice(encoder.n, size=int(encoder.n * bit_flip_p[-1]), replace=False)
 
 encoded = []
 for binary_data in five_sec_bin[:n]:
@@ -94,6 +95,7 @@ def simulation_step(p: float) -> dict[str, Any]:
     global clipping_factor
     global args
     global window_len
+    global error_idx
     channel = bsc_llr(p=p)
     ldpc_decoder = DecoderWiFi(spec=WiFiSpecCode.N1944_R23, max_iter=ldpc_iterations)
     entropy_decoder = EntropyBitwiseWeightedDecoder(DecoderWiFi(spec=WiFiSpecCode.N1944_R23, max_iter=ldpc_iterations),
@@ -103,13 +105,15 @@ def simulation_step(p: float) -> dict[str, Any]:
     rx = []
     decoded_ldpc = []
     decoded_entropy = []
+    errors = []
     step_results: dict[str, Any] = {'data': five_sec_bin[:n]}
     for tx_idx in range(n):
         # pad data - add 72 bits
         corrupted = BitArray(encoded[tx_idx])
-        error_idx = rng.choice(len(corrupted), size=no_errors, replace=False)
-        for idx in error_idx:
+        # error_idx = rng.choice(len(corrupted), size=no_errors, replace=False)
+        for idx in error_idx[:no_errors]:
             corrupted[idx] = not corrupted[idx]
+        errors.append(error_idx[:no_errors])
         rx.append(corrupted)
         channel_llr = channel(np.array(corrupted, dtype=np.int_))
         d = ldpc_decoder.decode(channel_llr)
@@ -120,10 +124,11 @@ def simulation_step(p: float) -> dict[str, Any]:
         decoded_entropy.append((*d, hamming_distance(Bits(auto=d[0]), encoded[tx_idx])))
         print("p= ", p, " tx id: ", tx_idx)
     print("successful pure decoding for bit flip p=", p, ", is: ", sum(int(res[7] == 0) for res in decoded_ldpc), "/", n)
-    print("successful entropy decoding for bit flip p=", p, ", is: ", sum(int(res[5] == 0) for res in decoded_entropy), "/",
+    print("successful entropy decoding for bit flip p=", p, ", is: ", sum(int(res[-1] == 0) for res in decoded_entropy), "/",
           n)
     step_results['encoded'] = encoded
-    step_results['rx'] = rx
+    step_results['corrupted'] = rx
+    step_results['error_idx'] = errors
     step_results['decoded_ldpc'] = decoded_ldpc
     step_results["ldpc_buffer_success_rate"] = sum(int(res[7] == 0) for res in decoded_ldpc) / float(n)
 
@@ -135,7 +140,7 @@ def simulation_step(p: float) -> dict[str, Any]:
     ) / float(n * len(encoded[0]))
 
     step_results["decoded_entropy"] = decoded_entropy
-    step_results["entropy_buffer_success_rate"] = sum(int(res[5] == 0) for res in decoded_entropy) / float(n)
+    step_results["entropy_buffer_success_rate"] = sum(int(res[-1] == 0) for res in decoded_entropy) / float(n)
     step_results["entropy_decoder_ber"] = sum(
         hamming_distance(encoded[idx], Bits(auto=decoded_entropy[idx][0]))
         for idx in range(n)
@@ -152,8 +157,9 @@ def simulation_step(p: float) -> dict[str, Any]:
 
 
 if __name__ == '__main__':
-    with Pool(processes=processes) as pool:
-        results: list[dict[str, Any]] = pool.map(simulation_step, bit_flip_p)
+    # with Pool(processes=processes) as pool:
+    #     results: list[dict[str, Any]] = pool.map(simulation_step, bit_flip_p)
+    results: list[dict[str, Any]] = list(map(simulation_step, bit_flip_p))
 
     timestamp = f'{str(datetime.date.today())}_{str(datetime.datetime.now().hour)}_{str(datetime.datetime.now().minute)}_' \
                 f'{str(datetime.datetime.now().second)}'

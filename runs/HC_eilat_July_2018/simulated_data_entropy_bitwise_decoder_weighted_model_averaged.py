@@ -22,7 +22,7 @@ parser.add_argument("--N", default=0, help="max number of transmissions to consi
 parser.add_argument("--minflip", default=36*1e-3, help="minimal bit flip probability to consider", type=float)
 parser.add_argument("--maxflip", default=55*1e-3, help="maximal bit flip probability to consider", type=float)
 parser.add_argument("--nflips", default=3, help="number of bit flips to consider", type=int)
-parser.add_argument("--ldpciterations", default=10, help="number of iterations of  LDPC decoder", type=int)
+parser.add_argument("--ldpciterations", default=20, help="number of iterations of  LDPC decoder", type=int)
 parser.add_argument("--ent_threshold", default=0.36, help="entropy threshold to be used in entropy decoder", type=float)
 parser.add_argument("--window_len", default=0, help="number of previous samples to use, if 0 all are used", type=int)
 parser.add_argument("--clipping_factor", default=2, help="dictates maximal and minimal llr", type=int)
