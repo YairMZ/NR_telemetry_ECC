@@ -19,25 +19,31 @@ from multiprocessing import Pool
 
 parser = argparse.ArgumentParser(description='Run decoding on simulated data using multiprocessing.')
 parser.add_argument("--N", default=0, help="max number of transmissions to consider", type=int)
-parser.add_argument("--minflip", default=36*1e-3, help="minimal bit flip probability to consider", type=float)
-parser.add_argument("--maxflip", default=55*1e-3, help="maximal bit flip probability to consider", type=float)
-parser.add_argument("--nflips", default=5, help="number of bit flips to consider", type=int)
-parser.add_argument("--ldpciterations", default=10, help="number of iterations of  LDPC decoder", type=int)
+parser.add_argument("--minflip", default=33*1e-3, help="minimal bit flip probability to consider", type=float)
+parser.add_argument("--maxflip", default=70*1e-3, help="maximal bit flip probability to consider", type=float)
+parser.add_argument("--nflips", default=20, help="number of bit flips to consider", type=int)
+parser.add_argument("--ldpciterations", default=20, help="number of iterations of  LDPC decoder", type=int)
 parser.add_argument("--ent_threshold", default=0.36, help="entropy threshold to be used in entropy decoder", type=float)
-parser.add_argument("--window_len", default=0, help="number of previous samples to use, if 0 all are used", type=int)
+parser.add_argument("--window_len", default=50, help="number of previous samples to use, if 0 all are used", type=int)
 parser.add_argument("--clipping_factor", default=2, help="dictates maximal and minimal llr", type=int)
-parser.add_argument("--min_data", default=10, help="minimal amount of samples before inference is used", type=int)
-parser.add_argument("--segiterations", default=2, help="number of exchanges between LDPC and CB decoder", type=int)
-parser.add_argument("--goodp", default=1e-7, help="number of exchanges between LDPC and CB decoder", type=float)
-parser.add_argument("--badp", default=0, help="number of exchanges between LDPC and CB decoder", type=float)
+parser.add_argument("--multiply_data", default=0, help="multiplies amount of buffers by 2 to power of arg", type=int)
+parser.add_argument("--processes", default=0, help="number of processes to spawn", type=int)
+parser.add_argument("--a_conf_center", default=20, help="center of a_model sigmoid", type=int)
+parser.add_argument("--a_conf_slope", default=0.35, help="slope of a_model sigmoid", type=float)
+parser.add_argument("--b_conf_center", default=40, help="center of b_model sigmoid", type=int)
+parser.add_argument("--b_conf_slope", default=0.35, help="slope of b_model sigmoid", type=float)
+parser.add_argument("--confidence", default=0, help="scheme for determining confidence", type=int)
+parser.add_argument("--feedback_iterations", default=3, help="number of exchanges between LDPC and CB decoder", type=int)
+parser.add_argument("--stable_factor", default=1.1, help="llr factor to use for stable data", type=float)
 
 
 args = parser.parse_args()
 
 ldpc_iterations = args.ldpciterations
-seg_iter = args.segiterations
 thr = args.ent_threshold
 clipping_factor = args.clipping_factor
+processes = args.processes if args.processes > 0 else None
+feedback_iterations = args.feedback_iterations
 
 encoder = EncoderWiFi(WiFiSpecCode.N1944_R23)
 bs = BufferSegmentation(meta.protocol_parser)
@@ -59,6 +65,9 @@ for binary_data in five_sec_bin[:n]:
     padded = binary_data + Bits(uint=random.getrandbits(pad_len), length=pad_len)
     encoded.append(encoder.encode(padded))
 
+for _ in range(args.multiply_data):  # generate more buffers for statistical reproducibility
+    encoded.extend(encoded)
+
 model_length = len(five_sec_bin[0])
 n = len(encoded)
 
@@ -67,6 +76,13 @@ n = len(encoded)
 # last 9 bytes (72 bits) are padding and not messages. Thus last message ends at byte index 152
 # bit indices:
 # {0: 33, 416: 234, 576: 30, 864: 212, 1080: 218}
+
+error_idx = np.vstack(
+    tuple(rng.choice(encoder.n, size=int(encoder.n * bit_flip_p[-1]), replace=False)
+     for _ in range(n))
+)
+plt.hist(error_idx.flatten(), 100)
+plt.show()
 
 print(__file__)
 print("number of buffers to process: ", n)
@@ -77,14 +93,20 @@ print("number of ldpc decoder iterations: ", ldpc_iterations)
 print("entropy threshold used in entropy decoder:", thr)
 print("entropy decoder window length:", window_len)
 print("clipping factor:", clipping_factor)
-print("min_data:", args.min_data)
-print("number of segmentation iterations: ", seg_iter)
-print("good probability: ", args.goodp)
-print("bad probability: ", args.badp)
+print("a_model center:", args.a_conf_center)
+print("a_model slope:", args.a_conf_slope)
+print("b_model center:", args.b_conf_center)
+print("b_model slope:", args.b_conf_slope)
+print("confidence scheme:", args.confidence)
+print("number of feedback iterations: ", feedback_iterations)
+print("stable factor: ", args.stable_factor)
 
-cmd = f'python {__file__} --minflip {args.minflip} --maxflip {args.maxflip} --nflips {args.nflips}  --ldpciterations ' +\
-      f'{ldpc_iterations} --ent_threshold {thr} --clipping_factor {clipping_factor} --min_data {args.min_data}' +\
-      f' --segiterations {seg_iter} --goodp {args.goodp} --badp {args.badp}'
+
+cmd = f'python {__file__} --minflip {args.minflip} --maxflip {args.maxflip} --nflips {args.nflips} --ldpciterations ' \
+      f'{ldpc_iterations} --ent_threshold {thr} --clipping_factor {clipping_factor} --a_conf_center ' \
+      f'{args.a_conf_center} --a_conf_slope {args.a_conf_slope} --b_conf_center {args.b_conf_center} --b_conf_slope ' \
+      f'{args.b_conf_slope} --confidence {args.confidence} --feedback_iterations {feedback_iterations} --stable_factor ' \
+      f'{args.stable_factor}'
 
 if window_len is not None:
     cmd += f' --window_len {window_len}'
@@ -99,26 +121,25 @@ def simulation_step(p: float) -> dict[str, Any]:
     global clipping_factor
     global args
     global window_len
-    global seg_iter
+    global error_idx
+    global feedback_iterations
     channel = bsc_llr(p=p)
-    bad_p = args.badp if args.badp > 0 else p  # this will make channel llr difference of close to 2 between default and bad
-    good_p = args.goodp if args.goodp > 0 else p / 7  # this will make channel llr diff of close to 2 between default and good
     ldpc_decoder = DecoderWiFi(spec=WiFiSpecCode.N1944_R23, max_iter=ldpc_iterations)
     combined_decoder = CombinedDecoder(DecoderWiFi(spec=WiFiSpecCode.N1944_R23, max_iter=ldpc_iterations),
-                                       model_length=model_length, entropy_threshold=thr, clipping_factor=clipping_factor,
-                                       min_data=args.min_data, segmentation_iterations=seg_iter, bad_p=bad_p, good_p=good_p,
-                                       window_length=window_len)
-
+                                      model_length=model_length, entropy_threshold=thr, clipping_factor=clipping_factor,
+                                      feedback_iterations=feedback_iterations, stable_factor=args.stable_factor,
+                                      window_length=window_len, a_conf_center=args.a_conf_center,
+                                      a_conf_slope=args.a_conf_slope, b_conf_center=args.b_conf_center,
+                                      b_conf_slope=args.b_conf_slope, confidence=args.confidence)
     no_errors = int(encoder.n * p)
     rx = []
     decoded_ldpc = []
     decoded_combined = []
+    errors = error_idx[:, :no_errors]
     step_results: dict[str, Any] = {'data': five_sec_bin[:n]}
     for tx_idx in range(n):
-        # pad data - add 72 bits
         corrupted = BitArray(encoded[tx_idx])
-        error_idx = rng.choice(len(corrupted), size=no_errors, replace=False)
-        for idx in error_idx:
+        for idx in errors[tx_idx]:
             corrupted[idx] = not corrupted[idx]
         rx.append(corrupted)
         channel_llr = channel(np.array(corrupted, dtype=np.int_))
@@ -129,13 +150,14 @@ def simulation_step(p: float) -> dict[str, Any]:
         d = combined_decoder.decode_buffer(channel_llr)
         decoded_combined.append((*d, hamming_distance(Bits(auto=d[0]), encoded[tx_idx])))
         print("p= ", p, " tx id: ", tx_idx)
-    print("successful pure decoding for bit flip p=", p, ", is: ", sum(int(res[5] == 0) for res in decoded_ldpc), "/", n)
-    print("successful combined decoding for bit flip p=", p, ", is: ", sum(int(res[5] == 0) for res in decoded_combined), "/",
+    print("successful pure decoding for bit flip p=", p, ", is: ", sum(int(res[7] == 0) for res in decoded_ldpc), "/", n)
+    print("successful combined decoding for bit flip p=", p, ", is: ", sum(int(res[-1] == 0) for res in decoded_combined), "/",
           n)
     step_results['encoded'] = encoded
-    step_results['rx'] = rx
+    step_results['corrupted'] = rx
+    step_results['error_idx'] = errors
     step_results['decoded_ldpc'] = decoded_ldpc
-    step_results["ldpc_buffer_success_rate"] = sum(int(res[5] == 0) for res in decoded_ldpc) / float(n)
+    step_results["ldpc_buffer_success_rate"] = sum(int(res[7] == 0) for res in decoded_ldpc) / float(n)
 
     step_results["raw_ber"] = no_errors / encoder.n
     step_results["buffer_len"] = len(encoded[0])
@@ -145,7 +167,7 @@ def simulation_step(p: float) -> dict[str, Any]:
     ) / float(n * len(encoded[0]))
 
     step_results["decoded_combined"] = decoded_combined
-    step_results["combined_buffer_success_rate"] = sum(int(res[5] == 0) for res in decoded_combined) / float(n)
+    step_results["combined_buffer_success_rate"] = sum(int(res[-1] == 0) for res in decoded_combined) / float(n)
     step_results["combined_decoder_ber"] = sum(
         hamming_distance(encoded[idx], Bits(auto=decoded_combined[idx][0]))
         for idx in range(n)
@@ -153,6 +175,11 @@ def simulation_step(p: float) -> dict[str, Any]:
 
     step_results["n"] = n
     step_results["max_ldpc_iterations"] = ldpc_iterations
+
+    timestamp = f'{str(datetime.date.today())}_{str(datetime.datetime.now().hour)}_{str(datetime.datetime.now().minute)}_' \
+                f'{str(datetime.datetime.now().second)}'
+    with open(f'{timestamp}_{p}_simulation_combined.pickle', 'wb') as f:
+        pickle.dump(step_results, f)
     return step_results
 
 
