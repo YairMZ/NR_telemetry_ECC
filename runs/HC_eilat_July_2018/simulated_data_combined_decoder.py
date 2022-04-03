@@ -35,6 +35,7 @@ parser.add_argument("--b_conf_slope", default=0.35, help="slope of b_model sigmo
 parser.add_argument("--confidence", default=0, help="scheme for determining confidence", type=int)
 parser.add_argument("--feedback_iterations", default=3, help="number of exchanges between LDPC and CB decoder", type=int)
 parser.add_argument("--stable_factor", default=1.1, help="llr factor to use for stable data", type=float)
+parser.add_argument("--equal_iterations", default=1, help="llr factor to use for stable data", type=int)
 
 
 args = parser.parse_args()
@@ -93,6 +94,8 @@ print("number of ldpc decoder iterations: ", ldpc_iterations)
 print("entropy threshold used in entropy decoder:", thr)
 print("entropy decoder window length:", window_len)
 print("clipping factor:", clipping_factor)
+print("multiply data:", args.multiply_data)
+print("processes:", processes)
 print("a_model center:", args.a_conf_center)
 print("a_model slope:", args.a_conf_slope)
 print("b_model center:", args.b_conf_center)
@@ -100,19 +103,23 @@ print("b_model slope:", args.b_conf_slope)
 print("confidence scheme:", args.confidence)
 print("number of feedback iterations: ", feedback_iterations)
 print("stable factor: ", args.stable_factor)
+print("equal iterations: ", args.equal_iterations)
 
 
 cmd = f'python {__file__} --minflip {args.minflip} --maxflip {args.maxflip} --nflips {args.nflips} --ldpciterations ' \
       f'{ldpc_iterations} --ent_threshold {thr} --clipping_factor {clipping_factor} --a_conf_center ' \
       f'{args.a_conf_center} --a_conf_slope {args.a_conf_slope} --b_conf_center {args.b_conf_center} --b_conf_slope ' \
-      f'{args.b_conf_slope} --confidence {args.confidence} --feedback_iterations {feedback_iterations} --stable_factor ' \
-      f'{args.stable_factor}'
+      f'{args.b_conf_slope} --confidence {args.confidence} --feedback_iterations {feedback_iterations} ' \
+      f'--stable_factor {args.stable_factor} --equal_iterations {args.equal_iterations}'
 
 if window_len is not None:
     cmd += f' --window_len {window_len}'
 if args.N > 0:
     cmd += f' --N {n}'
-
+if args.multiply_data > 0:
+    cmd += f' --multiply_data {args.multiply_data}'
+if processes is not None:
+    cmd += f' --processes {processes}'
 
 def simulation_step(p: float) -> dict[str, Any]:
     global ldpc_iterations
@@ -124,8 +131,12 @@ def simulation_step(p: float) -> dict[str, Any]:
     global error_idx
     global feedback_iterations
     channel = bsc_llr(p=p)
+    if args.equal_iterations == 1:
+        iter = (ldpc_iterations//feedback_iterations) + 1
+    else:
+        iter = ldpc_iterations
     ldpc_decoder = DecoderWiFi(spec=WiFiSpecCode.N1944_R23, max_iter=ldpc_iterations)
-    combined_decoder = CombinedDecoder(DecoderWiFi(spec=WiFiSpecCode.N1944_R23, max_iter=ldpc_iterations),
+    combined_decoder = CombinedDecoder(DecoderWiFi(spec=WiFiSpecCode.N1944_R23, max_iter=iter),
                                       model_length=model_length, entropy_threshold=thr, clipping_factor=clipping_factor,
                                       feedback_iterations=feedback_iterations, stable_factor=args.stable_factor,
                                       window_length=window_len, a_conf_center=args.a_conf_center,
@@ -184,7 +195,7 @@ def simulation_step(p: float) -> dict[str, Any]:
 
 
 if __name__ == '__main__':
-    with Pool() as pool:
+    with Pool(processes=processes) as pool:
         results: list[dict[str, Any]] = pool.map(simulation_step, bit_flip_p)
 
     timestamp = f'{str(datetime.date.today())}_{str(datetime.datetime.now().hour)}_{str(datetime.datetime.now().minute)}_' \
