@@ -96,6 +96,8 @@ print("b_model center:", args.b_conf_center)
 print("b_model slope:", args.b_conf_slope)
 print("confidence scheme:", args.confidence)
 print("averaging:", args.averaging)
+print("multiply data: ", args.multiply_data)
+print("processes: ", args.processes)
 
 cmd = f'python {__file__} --minflip {args.minflip} --maxflip {args.maxflip} --nflips {args.nflips} --ldpciterations ' \
       f'{ldpc_iterations} --ent_threshold {thr} --clipping_factor {clipping_factor} --a_conf_center ' \
@@ -106,7 +108,10 @@ if window_len is not None:
     cmd += f' --window_len {window_len}'
 if args.N > 0:
     cmd += f' --N {n}'
-
+if args.multiply_data > 0:
+    cmd += f' --multiply_data {args.multiply_data}'
+if processes is not None:
+    cmd += f' --processes {processes}'
 
 def simulation_step(p: float) -> dict[str, Any]:
     global ldpc_iterations
@@ -219,5 +224,5 @@ if __name__ == '__main__':
             pickle.dump(summary, f)
         overall_stats.append(summary)
 
-    with open(os.path.join("results/", 'overall_stats_' + timestamp + '_summary_entropy_vs_pure_LDPC_weighted_model.pickle'), 'wb') as f:
+    with open(os.path.join("results/", f'overall_stats_{timestamp}' + '_summary_entropy_vs_pure_LDPC_weighted_model.pickle'), 'wb') as f:
         pickle.dump(overall_stats, f)

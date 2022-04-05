@@ -241,7 +241,7 @@ class EntropyBitwiseWeightedDecoder(Decoder):
 
     def __init__(self, ldpc_decoder: LogSpaDecoder, model_length: int, entropy_threshold: float, clipping_factor: float,
                  window_length: Optional[int] = None, a_conf_center: int = 20, a_conf_slope: float = 0.35,
-                 b_conf_center: int = 40, b_conf_slope: float = 0.35, confidence: int = 0) -> None:
+                 b_conf_center: int = 40, b_conf_slope: float = 0.35, confidence: int = 0, ) -> None:
         """
         Create a new decoder
         :param ldpc_decoder: decoder for ldpc code used
@@ -372,7 +372,8 @@ class EntropyBitwiseWeightedDecoder(Decoder):
         elif self.confidence == 3:  # ignore bad model
             b_confidence = 0
         elif self.confidence == 3:  # use predetermined clipping
-            clipping = self.clipping_factor
+            # clipping = self.clipping_factor
+
 
         # add model llr to the observation
         if a_confidence > 0:
