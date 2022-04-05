@@ -3,5 +3,7 @@ numpy~=1.22.1
 scipy>=1.8.0
 pymavlink~=2.4.15
 pytest>=7.0
-sim-ldpc
+sim-ldpc>=0.3.2
 matplotlib~=3.5.1
+pandas~=1.4.2
+seaborn~=0.11.2

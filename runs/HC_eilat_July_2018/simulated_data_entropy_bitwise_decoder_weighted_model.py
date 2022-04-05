@@ -19,15 +19,20 @@ from multiprocessing import Pool
 
 parser = argparse.ArgumentParser(description='Run decoding on simulated data using multiprocessing.')
 parser.add_argument("--N", default=0, help="max number of transmissions to consider", type=int)
-parser.add_argument("--minflip", default=36*1e-3, help="minimal bit flip probability to consider", type=float)
-parser.add_argument("--maxflip", default=55*1e-3, help="maximal bit flip probability to consider", type=float)
-parser.add_argument("--nflips", default=3, help="number of bit flips to consider", type=int)
+parser.add_argument("--minflip", default=33*1e-3, help="minimal bit flip probability to consider", type=float)
+parser.add_argument("--maxflip", default=70*1e-3, help="maximal bit flip probability to consider", type=float)
+parser.add_argument("--nflips", default=20, help="number of bit flips to consider", type=int)
 parser.add_argument("--ldpciterations", default=20, help="number of iterations of  LDPC decoder", type=int)
 parser.add_argument("--ent_threshold", default=0.36, help="entropy threshold to be used in entropy decoder", type=float)
-parser.add_argument("--window_len", default=0, help="number of previous samples to use, if 0 all are used", type=int)
+parser.add_argument("--window_len", default=50, help="number of previous samples to use, if 0 all are used", type=int)
 parser.add_argument("--clipping_factor", default=2, help="dictates maximal and minimal llr", type=int)
 parser.add_argument("--multiply_data", default=0, help="multiplies amount of buffers by 2 to power of arg", type=int)
-parser.add_argument("--processes", default=0, help="multiplies amount of buffers by 2 to power of arg", type=int)
+parser.add_argument("--processes", default=0, help="number of processes to spawn", type=int)
+parser.add_argument("--a_conf_center", default=20, help="center of a_model sigmoid", type=int)
+parser.add_argument("--a_conf_slope", default=0.35, help="slope of a_model sigmoid", type=float)
+parser.add_argument("--b_conf_center", default=40, help="center of b_model sigmoid", type=int)
+parser.add_argument("--b_conf_slope", default=0.35, help="slope of b_model sigmoid", type=float)
+parser.add_argument("--confidence", default=0, help="scheme for determining confidence", type=int)
 
 args = parser.parse_args()
 
@@ -49,7 +54,6 @@ window_len = args.window_len if args.window_len > 0 else None
 # corrupt data
 rng = np.random.default_rng()
 bit_flip_p = np.linspace(args.minflip, args.maxflip, num=args.nflips)
-error_idx = rng.choice(encoder.n, size=int(encoder.n * bit_flip_p[-1]), replace=False)
 
 encoded = []
 for binary_data in five_sec_bin[:n]:
@@ -57,7 +61,7 @@ for binary_data in five_sec_bin[:n]:
     padded = binary_data + Bits(uint=random.getrandbits(pad_len), length=pad_len)
     encoded.append(encoder.encode(padded))
 
-for _ in range(args.multiply_data):  # generate 8 times more buffers for statistical reproducibility
+for _ in range(args.multiply_data):  # generate more buffers for statistical reproducibility
     encoded.extend(encoded)
 
 model_length = len(five_sec_bin[0])
@@ -69,6 +73,13 @@ n = len(encoded)
 # bit indices:
 # {0: 33, 416: 234, 576: 30, 864: 212, 1080: 218}
 
+error_idx = np.vstack(
+    tuple(rng.choice(encoder.n, size=int(encoder.n * bit_flip_p[-1]), replace=False)
+     for _ in range(n))
+)
+plt.hist(error_idx.flatten(), 100)
+plt.show()
+
 print(__file__)
 print("number of buffers to process: ", n)
 print("smallest bit flip probability: ", args.minflip)
@@ -78,9 +89,16 @@ print("number of ldpc decoder iterations: ", ldpc_iterations)
 print("entropy threshold used in entropy decoder:", thr)
 print("entropy decoder window length:", window_len)
 print("clipping factor:", clipping_factor)
+print("a_model center:", args.a_conf_center)
+print("a_model slope:", args.a_conf_slope)
+print("b_model center:", args.b_conf_center)
+print("b_model slope:", args.b_conf_slope)
+print("confidence scheme:", args.confidence)
 
-cmd = f'python {__file__} --minflip {args.minflip} --maxflip {args.maxflip} --nflips {args.nflips} --ldpciterations ' +\
-      f'{ldpc_iterations} --ent_threshold {thr} --clipping_factor {clipping_factor}'
+cmd = f'python {__file__} --minflip {args.minflip} --maxflip {args.maxflip} --nflips {args.nflips} --ldpciterations ' \
+      f'{ldpc_iterations} --ent_threshold {thr} --clipping_factor {clipping_factor} --a_conf_center ' \
+      f'{args.a_conf_center} --a_conf_slope {args.a_conf_slope} --b_conf_center {args.b_conf_center} --b_conf_slope ' \
+      f'{args.b_conf_slope} --confidence {args.confidence}'
 
 if window_len is not None:
     cmd += f' --window_len {window_len}'
@@ -100,20 +118,22 @@ def simulation_step(p: float) -> dict[str, Any]:
     ldpc_decoder = DecoderWiFi(spec=WiFiSpecCode.N1944_R23, max_iter=ldpc_iterations)
     entropy_decoder = EntropyBitwiseWeightedDecoder(DecoderWiFi(spec=WiFiSpecCode.N1944_R23, max_iter=ldpc_iterations),
                                                     model_length=model_length, entropy_threshold=thr,
-                                                    clipping_factor=clipping_factor, window_length=window_len)
+                                                    clipping_factor=clipping_factor, window_length=window_len,
+                                                    a_conf_center=args.a_conf_center, a_conf_slope=args.a_conf_slope,
+                                                    b_conf_center=args.b_conf_center, b_conf_slope=args.b_conf_slope,
+                                                    confidence=args.confidence)
     no_errors = int(encoder.n * p)
     rx = []
     decoded_ldpc = []
     decoded_entropy = []
-    errors = []
+    errors = error_idx[:, :no_errors]
     step_results: dict[str, Any] = {'data': five_sec_bin[:n]}
     for tx_idx in range(n):
         # pad data - add 72 bits
         corrupted = BitArray(encoded[tx_idx])
         # error_idx = rng.choice(len(corrupted), size=no_errors, replace=False)
-        for idx in error_idx[:no_errors]:
+        for idx in errors[tx_idx]:
             corrupted[idx] = not corrupted[idx]
-        errors.append(error_idx[:no_errors])
         rx.append(corrupted)
         channel_llr = channel(np.array(corrupted, dtype=np.int_))
         d = ldpc_decoder.decode(channel_llr)
@@ -157,9 +177,9 @@ def simulation_step(p: float) -> dict[str, Any]:
 
 
 if __name__ == '__main__':
-    # with Pool(processes=processes) as pool:
-    #     results: list[dict[str, Any]] = pool.map(simulation_step, bit_flip_p)
-    results: list[dict[str, Any]] = list(map(simulation_step, bit_flip_p))
+    with Pool(processes=processes) as pool:
+        results: list[dict[str, Any]] = pool.map(simulation_step, bit_flip_p)
+    # results: list[dict[str, Any]] = list(map(simulation_step, bit_flip_p))
 
     timestamp = f'{str(datetime.date.today())}_{str(datetime.datetime.now().hour)}_{str(datetime.datetime.now().minute)}_' \
                 f'{str(datetime.datetime.now().second)}'
@@ -194,3 +214,4 @@ if __name__ == '__main__':
                "entropy_buffer_success_rate": entropy_buffer_success_rate}
     with open(os.path.join(path, timestamp + '_summary_entropy_vs_pure_LDPC_weighted_model.pickle'), 'wb') as f:
         pickle.dump(summary, f)
+

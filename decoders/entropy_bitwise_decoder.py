@@ -241,7 +241,7 @@ class EntropyBitwiseWeightedDecoder(Decoder):
 
     def __init__(self, ldpc_decoder: LogSpaDecoder, model_length: int, entropy_threshold: float, clipping_factor: float,
                  window_length: Optional[int] = None, a_conf_center: int = 20, a_conf_slope: float = 0.35,
-                 b_conf_center: int = 40, b_conf_slope: float = 0.35, confidence: int = 0) -> None:
+                 b_conf_center: int = 40, b_conf_slope: float = 0.35, confidence: int = 0, ) -> None:
         """
         Create a new decoder
         :param ldpc_decoder: decoder for ldpc code used
@@ -272,8 +272,7 @@ class EntropyBitwiseWeightedDecoder(Decoder):
         self.confidence = confidence
         super().__init__(DecoderType.ENTROPY)
 
-    def decode_buffer(self, channel_llr: Sequence[np.float_]) -> tuple[NDArray[np.int_], NDArray[np.float_], bool, int, int,
-    NDArray[np.float_],NDArray[np.float_]]:
+    def decode_buffer(self, channel_llr: Sequence[np.float_]) -> tuple[NDArray[np.int_], NDArray[np.float_], bool, int, int, NDArray[np.float_],NDArray[np.float_]]:
         """decodes a buffer
         :param channel_llr: channel llr of bits to decode
         :return: return a tuple (estimated_bits, llr, decode_success, no_iterations, no of mavlink messages found)
@@ -330,10 +329,9 @@ class EntropyBitwiseWeightedDecoder(Decoder):
             raise IncorrectBufferLength()
         arr = bits[np.newaxis]
         self.model_b_data = arr.T if self.model_b_data.size == 0 else np.append(self.model_b_data, arr.T, axis=1)
-        # for bad modl use a window two times longer
-        if (self.window_length is not None) and self.model_b_data.shape[1] > 2*self.window_length:
+        if (self.window_length is not None) and self.model_b_data.shape[1] > self.window_length:
             # trim old messages according to window
-            self.model_b_data = self.model_b_data[:, self.model_b_data.shape[1] - 2*self.window_length:]
+            self.model_b_data = self.model_b_data[:, self.model_b_data.shape[1] - self.window_length:]
         self.b_distribution = prob(self.model_b_data)
         self.b_entropy = entropy(self.b_distribution)
 
@@ -375,6 +373,7 @@ class EntropyBitwiseWeightedDecoder(Decoder):
             b_confidence = 0
         elif self.confidence == 3:  # use predetermined clipping
             clipping = self.clipping_factor
+
 
         # add model llr to the observation
         if a_confidence > 0:
