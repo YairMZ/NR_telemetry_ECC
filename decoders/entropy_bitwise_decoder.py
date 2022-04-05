@@ -372,7 +372,7 @@ class EntropyBitwiseWeightedDecoder(Decoder):
         elif self.confidence == 3:  # ignore bad model
             b_confidence = 0
         elif self.confidence == 3:  # use predetermined clipping
-            # clipping = self.clipping_factor
+            clipping = self.clipping_factor
 
 
         # add model llr to the observation
