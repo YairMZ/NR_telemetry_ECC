@@ -94,16 +94,21 @@ print("a_model slope:", args.a_conf_slope)
 print("b_model center:", args.b_conf_center)
 print("b_model slope:", args.b_conf_slope)
 print("confidence scheme:", args.confidence)
+print("processes:", args.processes)
+print("multiply_data:", args.multiply_data)
 
 cmd = f'python {__file__} --minflip {args.minflip} --maxflip {args.maxflip} --nflips {args.nflips} --ldpciterations ' \
       f'{ldpc_iterations} --ent_threshold {thr} --clipping_factor {clipping_factor} --a_conf_center ' \
       f'{args.a_conf_center} --a_conf_slope {args.a_conf_slope} --b_conf_center {args.b_conf_center} --b_conf_slope ' \
-      f'{args.b_conf_slope} --confidence {args.confidence}'
+      f'{args.b_conf_slope} --confidence {args.confidence}  --multiply_data {args.multiply_data}'
 
 if window_len is not None:
     cmd += f' --window_len {window_len}'
 if args.N > 0:
     cmd += f' --N {n}'
+    if processes is not None:
+        cmd += f' --processes {processes}'
+
 
 
 def simulation_step(p: float) -> dict[str, Any]:
