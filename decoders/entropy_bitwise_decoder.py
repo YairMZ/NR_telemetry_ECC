@@ -241,7 +241,8 @@ class EntropyBitwiseWeightedDecoder(Decoder):
 
     def __init__(self, ldpc_decoder: LogSpaDecoder, model_length: int, entropy_threshold: float, clipping_factor: float,
                  window_length: Optional[int] = None, a_conf_center: int = 20, a_conf_slope: float = 0.35,
-                 b_conf_center: int = 40, b_conf_slope: float = 0.35, confidence: int = 0, ) -> None:
+                 b_conf_center: int = 40, b_conf_slope: float = 0.35, confidence: int = 0,
+                 estimator: str = "MLE", bit_flip: float = 0, corrected_dist: bool = False) -> None:
         """
         Create a new decoder
         :param ldpc_decoder: decoder for ldpc code used
@@ -258,9 +259,7 @@ class EntropyBitwiseWeightedDecoder(Decoder):
         self.model_bits_idx[model_length:] = False
         self.model_bits_idx = np.flatnonzero(self.model_bits_idx)  # bit indices (among codeword bits) of model bits
         self.clipping_factor = clipping_factor  # The model llr is clipped to +-clipping_factor * max_chanel_llr
-        self.window_length = window_length
-        self.model_a_data: NDArray[np.uint8] = np.array([])  # 2d array, each column is a sample
-        self.model_b_data: NDArray[np.uint8] = np.array([])  # 2d array, each column is a sample
+
         self.a_distribution: NDArray[np.float_] = np.array([])
         self.a_entropy: NDArray[np.float_] = np.array([])
         self.b_distribution: NDArray[np.float_] = np.array([])
@@ -269,7 +268,23 @@ class EntropyBitwiseWeightedDecoder(Decoder):
         self.a_conf_slope = a_conf_slope
         self.b_conf_center = b_conf_center
         self.b_conf_slope = b_conf_slope
-        self.confidence = confidence
+        self.confidence_scheme = confidence
+        self.estimator = estimator
+        self.bit_flip = bit_flip
+        self.corrected_dist = corrected_dist
+        if estimator == "Bayes":
+            self.a_ones_prior = np.ones(len(self.model_bits_idx), dtype=np.int_)
+            self.a_zeros_prior = np.ones(len(self.model_bits_idx), dtype=np.int_)
+            self.b_ones_prior = np.ones(len(self.model_bits_idx), dtype=np.int_)
+            self.b_zeros_prior = np.ones(len(self.model_bits_idx), dtype=np.int_)
+            self.a_normalized_variance = 0.0
+            self.b_normalized_variance = 0.0
+            self.min_size = window_length
+            self.max_size = 2*window_length
+        else:  # use MLE
+            self.window_length = window_length
+            self.model_a_data: NDArray[np.uint8] = np.array([])  # 2d array, each column is a sample
+            self.model_b_data: NDArray[np.uint8] = np.array([])  # 2d array, each column is a sample
         super().__init__(DecoderType.ENTROPY)
 
     def decode_buffer(self, channel_llr: Sequence[np.float_]) -> tuple[NDArray[np.int_], NDArray[np.float_], bool, int, int, NDArray[np.float_],NDArray[np.float_]]:
@@ -314,11 +329,46 @@ class EntropyBitwiseWeightedDecoder(Decoder):
         if len(bits) != self.model_length:
             raise IncorrectBufferLength()
         arr = bits[np.newaxis]
-        self.model_a_data = arr.T if self.model_a_data.size == 0 else np.append(self.model_a_data, arr.T, axis=1)
-        if (self.window_length is not None) and self.model_a_data.shape[1] > self.window_length:
-            # trim old messages according to window
-            self.model_a_data = self.model_a_data[:, self.model_a_data.shape[1] - self.window_length:]
-        self.a_distribution = prob(self.model_a_data)
+
+        if self.estimator == "Bayes":
+            self.a_ones_prior += bits
+            self.a_zeros_prior += 1 - bits
+            # to allow for changes in data divide by common divisor
+            if self.a_ones_prior[0] + self.a_zeros_prior[0] > self.max_size:
+                gcd = np.gcd(self.a_ones_prior, self.a_zeros_prior)
+                self.a_ones_prior //= gcd
+                self.a_zeros_prior //= gcd
+                if self.a_ones_prior[0] + self.a_zeros_prior[0] < self.min_size:
+                    m = self.min_size // self.a_ones_prior[0] + self.a_zeros_prior[0]
+                    self.a_ones_prior *= m
+                    self.a_zeros_prior *= m
+
+            # estimate v using mode of beta variable
+            v = np.nan_to_num((self.a_ones_prior - 1) / (self.a_ones_prior + self.a_zeros_prior - 2))
+            p1 = np.clip((v - self.bit_flip) / (1 - 2 * self.bit_flip), 0, 1)
+            # find  th mean variance of estimates as confidence measure
+            var = ((1 / (1 - 2 * self.bit_flip)) ** 2) * np.mean(self.a_ones_prior * self.a_zeros_prior / (
+                    (self.a_ones_prior + self.a_zeros_prior + 1) * np.power(self.a_ones_prior + self.a_zeros_prior, 2)))
+            # for a uniform variable over the domain [0,1] (if we assumed uniform p) variance would be 1/12.
+            # Thus, we measure the variance with respect to a uniform distribution in percentage
+            self.a_normalized_variance = 12 * var  # percentage of uniform variance
+            self.a_distribution = np.column_stack((1 - p1, p1))
+        else:  # Use MLE
+            self.model_a_data = arr.T if self.model_a_data.size == 0 else np.append(self.model_a_data, arr.T, axis=1)
+            if (self.window_length is not None) and self.model_a_data.shape[1] > self.window_length:
+                # trim old messages according to window
+                self.model_a_data = self.model_a_data[:, self.model_a_data.shape[1] - self.window_length:]
+            self.a_distribution = prob(self.model_a_data)
+            if self.corrected_dist:
+                v = self.a_distribution[:, 1]
+                p1 = np.clip((v - self.bit_flip) / (1 - 2 * self.bit_flip), 0, 1)
+                self.a_distribution = np.column_stack((1 - p1, p1))
+            else:
+                p1 = self.b_distribution[:, 1]
+            # mu equals p1
+            # for a Bernoulli variable the variance p(1-p), which maximizes at 1/2.
+            # Thus, we measure the variance with respect to a uniform distribution in percentage
+            self.a_normalized_variance = 2 * np.mean(p1 - np.power(p1, 2))
         self.a_entropy = entropy(self.a_distribution)
 
     def update_model_b(self, bits: NDArray[np.int_]) -> None:
@@ -328,11 +378,46 @@ class EntropyBitwiseWeightedDecoder(Decoder):
         if len(bits) != self.model_length:
             raise IncorrectBufferLength()
         arr = bits[np.newaxis]
-        self.model_b_data = arr.T if self.model_b_data.size == 0 else np.append(self.model_b_data, arr.T, axis=1)
-        if (self.window_length is not None) and self.model_b_data.shape[1] > self.window_length:
-            # trim old messages according to window
-            self.model_b_data = self.model_b_data[:, self.model_b_data.shape[1] - self.window_length:]
-        self.b_distribution = prob(self.model_b_data)
+
+        if self.estimator == "Bayes":
+            self.b_ones_prior += bits
+            self.b_zeros_prior += 1 - bits
+            # to allow for changes in data divide by common divisor
+            if self.b_ones_prior[0] + self.b_zeros_prior[0] > self.max_size:
+                gcd = np.gcd(self.b_ones_prior, self.b_zeros_prior)
+                self.b_ones_prior //= gcd
+                self.b_zeros_prior //= gcd
+                if self.b_ones_prior[0] + self.b_zeros_prior[0] < self.min_size:
+                    m = self.min_size // self.b_ones_prior[0] + self.b_zeros_prior[0]
+                    self.b_ones_prior *= m
+                    self.b_zeros_prior *= m
+            # estimate v using mode of beta variable
+            v = np.nan_to_num((self.b_ones_prior - 1) / (self.b_ones_prior + self.b_zeros_prior - 2))
+
+            p1 = np.clip((v - self.bit_flip) / (1 - 2 * self.bit_flip), 0, 1)
+            # find th mean variance of estimates as confidence measure
+            var = ((1 / (1 - 2 * self.bit_flip)) ** 2) * np.mean(self.b_ones_prior * self.b_zeros_prior / (
+                    (self.b_ones_prior + self.b_zeros_prior + 1) * np.power(self.b_ones_prior + self.b_zeros_prior, 2)))
+            # for a uniform continuous variable over the domain [0,1] (if we assumed uniform p) variance would be 1/12.
+            # Thus, we measure the variance with respect to a uniform distribution in percentage
+            self.b_normalized_variance = 12 * var  # percentage of uniform variance
+            self.b_distribution = np.column_stack((1 - p1, p1))
+        else:  # Use MLE
+            self.model_b_data = arr.T if self.model_b_data.size == 0 else np.append(self.model_b_data, arr.T, axis=1)
+            if (self.window_length is not None) and self.model_b_data.shape[1] > self.window_length:
+                # trim old messages according to window
+                self.model_b_data = self.model_b_data[:, self.model_b_data.shape[1] - self.window_length:]
+            self.b_distribution = prob(self.model_b_data)
+            if self.corrected_dist:
+                v = self.b_distribution[:, 1]
+                p1 = np.clip((v - self.bit_flip) / (1 - 2 * self.bit_flip), 0, 1)
+                self.b_distribution = np.column_stack((1 - p1, p1))
+            else:
+                p1 = self.b_distribution[:, 1]
+            # mu equals p1
+            # for a Bernoulli variable the variance p(1-p), which maximizes at 1/2.
+            # Thus, we measure the variance with respect to a uniform distribution in percentage
+            self.b_normalized_variance = 2 * np.mean(p1 - np.power(p1, 2))
         self.b_entropy = entropy(self.b_distribution)
 
     def model_prediction(self, observation: NDArray[np.float_]) -> NDArray[np.float_]:
@@ -349,32 +434,40 @@ class EntropyBitwiseWeightedDecoder(Decoder):
         # index of structural (low entropy) elements among codeword
         a_structural_elements: NDArray[np.int_] = self.model_bits_idx[self.a_entropy < self.entropy_threshold]
         b_structural_elements: NDArray[np.int_] = self.model_bits_idx[self.b_entropy < self.entropy_threshold]
-        # model llr is calculated as log(Pr(c=0 | model) / Pr(c=1| model))
-        a_size = self.model_a_data.shape[1] if self.model_a_data.size > 0 else 0
-        b_size = self.model_b_data.shape[1] if self.model_b_data.size > 0 else 0
+
+        if (not a_structural_elements.any()) and (not b_structural_elements.any()):  # no structural elements found
+            return llr
+
+        if self.estimator == "Bayes":
+            a_size = self.a_ones_prior[0] + self.a_zeros_prior[0] - 2
+            b_size = self.b_ones_prior[0] + self.b_zeros_prior[0] - 2
+        else:   # Use MLE
+            a_size = self.model_a_data.shape[1] if self.model_a_data.size > 0 else 0
+            b_size = self.model_b_data.shape[1] if self.model_b_data.size > 0 else 0
+
         a_confidence = model_confidence(a_size, self.a_conf_center, self.a_conf_slope)
         b_confidence = model_confidence(b_size, self.b_conf_center, self.b_conf_slope)  # consider window size when setting these
 
-        clipping = self.clipping_factor * max(llr)  # llr s clipped within +-clipping
-
-        if self.confidence == 0:
+        if self.confidence_scheme == 0:
             pass  # use separate confidence measures
-        elif self.confidence == 1:  # normalize sum of confidence to unity
+        elif self.confidence_scheme == 1:  # normalize sum of confidence to unity
             s = a_confidence + b_confidence
             if s > 0:
                 a_confidence *= a_confidence / s
                 b_confidence *= b_confidence / s
-        elif self.confidence == 1:  # normalize sum but prefer "good" model
+        elif self.confidence_scheme == 1:  # normalize sum but prefer "good" model
             s = 2*a_confidence + b_confidence
             if s > 0:
                 a_confidence *= 2 * a_confidence / s
                 b_confidence *= b_confidence / s
-        elif self.confidence == 3:  # ignore bad model
+        elif self.confidence_scheme == 3:  # ignore bad model
             b_confidence = 0
-        elif self.confidence == 3:  # use predetermined clipping
-            clipping = self.clipping_factor
+        elif self.confidence_scheme == 4:  # scale using variance
+            a_confidence *= 1 - np.exp(-0.1 / self.a_normalized_variance)
+            b_confidence *= 1 - np.exp(-0.1 / self.b_normalized_variance)
 
-
+        clipping = self.clipping_factor * max(llr)  # llr s clipped within +-clipping
+        # model llr is calculated as log(Pr(c=0 | model) / Pr(c=1| model))
         # add model llr to the observation
         if a_confidence > 0:
             llr[a_structural_elements] += a_confidence*np.log(
