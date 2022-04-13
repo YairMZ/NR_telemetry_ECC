@@ -33,6 +33,8 @@ parser.add_argument("--a_conf_slope", default=0.35, help="slope of a_model sigmo
 parser.add_argument("--b_conf_center", default=40, help="center of b_model sigmoid", type=int)
 parser.add_argument("--b_conf_slope", default=0.35, help="slope of b_model sigmoid", type=float)
 parser.add_argument("--confidence", default=0, help="scheme for determining confidence", type=int)
+parser.add_argument("--corrected_dist", default=0, help="Should we use estimation correction", type=int)
+parser.add_argument("--estimator", default="MLE", help="which estimator to use (MLE or Bayes)", type=str)
 
 args = parser.parse_args()
 
@@ -77,8 +79,6 @@ error_idx = np.vstack(
     tuple(rng.choice(encoder.n, size=int(encoder.n * bit_flip_p[-1]), replace=False)
      for _ in range(n))
 )
-plt.hist(error_idx.flatten(), 100)
-plt.show()
 
 print(__file__)
 print("number of buffers to process: ", n)
@@ -94,11 +94,13 @@ print("a_model slope:", args.a_conf_slope)
 print("b_model center:", args.b_conf_center)
 print("b_model slope:", args.b_conf_slope)
 print("confidence scheme:", args.confidence)
+print("corrected_dist:", bool(args.corrected_dist))
+print("estimator:", args.estimator)
 
 cmd = f'python {__file__} --minflip {args.minflip} --maxflip {args.maxflip} --nflips {args.nflips} --ldpciterations ' \
       f'{ldpc_iterations} --ent_threshold {thr} --clipping_factor {clipping_factor} --a_conf_center ' \
       f'{args.a_conf_center} --a_conf_slope {args.a_conf_slope} --b_conf_center {args.b_conf_center} --b_conf_slope ' \
-      f'{args.b_conf_slope} --confidence {args.confidence}'
+      f'{args.b_conf_slope} --confidence {args.confidence} --corrected_dist {args.corrected_dist} --estimator {args.estimator}'
 
 if window_len is not None:
     cmd += f' --window_len {window_len}'
@@ -121,7 +123,8 @@ def simulation_step(p: float) -> dict[str, Any]:
                                                     clipping_factor=clipping_factor, window_length=window_len,
                                                     a_conf_center=args.a_conf_center, a_conf_slope=args.a_conf_slope,
                                                     b_conf_center=args.b_conf_center, b_conf_slope=args.b_conf_slope,
-                                                    confidence=args.confidence)
+                                                    confidence=args.confidence, bit_flip=p,
+                                                    corrected_dist=bool(args.corrected_dist), estimator=args.estimator)
     no_errors = int(encoder.n * p)
     rx = []
     decoded_ldpc = []
