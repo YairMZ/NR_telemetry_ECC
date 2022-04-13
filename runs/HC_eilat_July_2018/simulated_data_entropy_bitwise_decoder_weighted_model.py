@@ -33,6 +33,7 @@ parser.add_argument("--a_conf_slope", default=0.35, help="slope of a_model sigmo
 parser.add_argument("--b_conf_center", default=40, help="center of b_model sigmoid", type=int)
 parser.add_argument("--b_conf_slope", default=0.35, help="slope of b_model sigmoid", type=float)
 parser.add_argument("--confidence", default=0, help="scheme for determining confidence", type=int)
+parser.add_argument("--dec_type", default="BP", help="scheme for determining confidence", type=str)
 parser.add_argument("--corrected_dist", default=0, help="Should we use estimation correction", type=int)
 parser.add_argument("--estimator", default="MLE", help="which estimator to use (MLE or Bayes)", type=str)
 
@@ -94,18 +95,26 @@ print("a_model slope:", args.a_conf_slope)
 print("b_model center:", args.b_conf_center)
 print("b_model slope:", args.b_conf_slope)
 print("confidence scheme:", args.confidence)
+print("processes:", args.processes)
+print("multiply data:", args.multiply_data)
+print("decoder type: ", args.dec_type)
 print("corrected_dist:", bool(args.corrected_dist))
 print("estimator:", args.estimator)
+
 
 cmd = f'python {__file__} --minflip {args.minflip} --maxflip {args.maxflip} --nflips {args.nflips} --ldpciterations ' \
       f'{ldpc_iterations} --ent_threshold {thr} --clipping_factor {clipping_factor} --a_conf_center ' \
       f'{args.a_conf_center} --a_conf_slope {args.a_conf_slope} --b_conf_center {args.b_conf_center} --b_conf_slope ' \
-      f'{args.b_conf_slope} --confidence {args.confidence} --corrected_dist {args.corrected_dist} --estimator {args.estimator}'
+      f'{args.b_conf_slope} --confidence {args.confidence}  --multiply_data {args.multiply_data} --dec_type ' \
+      f'{args.dec_type} --corrected_dist {args.corrected_dist} --estimator {args.estimator}'
 
 if window_len is not None:
     cmd += f' --window_len {window_len}'
 if args.N > 0:
     cmd += f' --N {n}'
+    if processes is not None:
+        cmd += f' --processes {processes}'
+
 
 
 def simulation_step(p: float) -> dict[str, Any]:
@@ -117,8 +126,9 @@ def simulation_step(p: float) -> dict[str, Any]:
     global window_len
     global error_idx
     channel = bsc_llr(p=p)
-    ldpc_decoder = DecoderWiFi(spec=WiFiSpecCode.N1944_R23, max_iter=ldpc_iterations)
-    entropy_decoder = EntropyBitwiseWeightedDecoder(DecoderWiFi(spec=WiFiSpecCode.N1944_R23, max_iter=ldpc_iterations),
+    ldpc_decoder = DecoderWiFi(spec=WiFiSpecCode.N1944_R23, max_iter=ldpc_iterations, decoder_type=args.dec_type)
+    entropy_decoder = EntropyBitwiseWeightedDecoder(DecoderWiFi(spec=WiFiSpecCode.N1944_R23, max_iter=ldpc_iterations,
+                                                                decoder_type=args.dec_type),
                                                     model_length=model_length, entropy_threshold=thr,
                                                     clipping_factor=clipping_factor, window_length=window_len,
                                                     a_conf_center=args.a_conf_center, a_conf_slope=args.a_conf_slope,
@@ -192,7 +202,7 @@ if __name__ == '__main__':
     with open(os.path.join(path, "cmd.txt"), 'w') as f:
         f.write(cmd)
 
-    with open(os.path.join(path, timestamp + '_simulation_entropy_vs_pure_LDPC_weighted_model.pickle'), 'wb') as f:
+    with open(os.path.join(path, f'{timestamp}_simulation_entropy_vs_pure_LDPC_weighted_model_{args.dec_type}_decoder.pickle'), 'wb') as f:
         pickle.dump(results, f)
 
     raw_ber = np.array([p['raw_ber'] for p in results])
@@ -215,6 +225,6 @@ if __name__ == '__main__':
     summary = {"args": args, "raw_ber": raw_ber, "ldpc_ber": ldpc_ber, "entropy_ber": entropy_ber,
                "ldpc_buffer_success_rate": ldpc_buffer_success_rate,
                "entropy_buffer_success_rate": entropy_buffer_success_rate}
-    with open(os.path.join(path, timestamp + '_summary_entropy_vs_pure_LDPC_weighted_model.pickle'), 'wb') as f:
+    with open(os.path.join(path, f'{timestamp}_summary_entropy_vs_pure_LDPC_weighted_model_{args.dec_type}_decoder.pickle'), 'wb') as f:
         pickle.dump(summary, f)
 
