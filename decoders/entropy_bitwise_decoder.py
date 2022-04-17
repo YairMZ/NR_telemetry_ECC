@@ -364,7 +364,7 @@ class EntropyBitwiseWeightedDecoder(Decoder):
                 p1 = np.clip((v - self.bit_flip) / (1 - 2 * self.bit_flip), 0, 1)
                 self.a_distribution = np.column_stack((1 - p1, p1))
             else:
-                p1 = self.b_distribution[:, 1]
+                p1 = self.a_distribution[:, 1]
             # mu equals p1
             # for a Bernoulli variable the variance p(1-p), which maximizes at 1/2.
             # Thus, we measure the variance with respect to a uniform distribution in percentage
