@@ -287,7 +287,9 @@ class EntropyBitwiseWeightedDecoder(Decoder):
             self.model_b_data: NDArray[np.uint8] = np.array([])  # 2d array, each column is a sample
         super().__init__(DecoderType.ENTROPY)
 
-    def decode_buffer(self, channel_llr: Sequence[np.float_]) -> tuple[NDArray[np.int_], NDArray[np.float_], bool, int, int, NDArray[np.float_],NDArray[np.float_]]:
+    def decode_buffer(self, channel_llr: Sequence[np.float_]) -> tuple[NDArray[np.int_], NDArray[np.float_], bool, int,
+                                                                       NDArray[np.int_], NDArray[np.int_], int,
+                                                                       NDArray[np.float_], NDArray[np.float_]]:
         """decodes a buffer
         :param channel_llr: channel llr of bits to decode
         :return: return a tuple (estimated_bits, llr, decode_success, no_iterations, no of mavlink messages found)
@@ -320,7 +322,7 @@ class EntropyBitwiseWeightedDecoder(Decoder):
         else:  # update model from channel if data is bad
             channel_bits = np.array(channel_llr < 0, dtype=np.int_)[self.model_bits_idx]
             self.update_model_b(channel_bits)
-        return estimate, llr, decode_success, iterations, len(structure), self.a_distribution, self.b_distribution
+        return estimate, llr, decode_success, iterations, syndrome, vnode_validity, len(structure), self.a_distribution, self.b_distribution
 
     def update_model_a(self, bits: NDArray[np.int_]) -> None:
         """update model of data. model_a uses only data which mavlink passed crc (and valid codeword)

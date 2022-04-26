@@ -15,6 +15,8 @@ import argparse
 import datetime
 import os
 from multiprocessing import Pool
+from scipy.io import savemat
+import lzma
 
 
 parser = argparse.ArgumentParser(description='Run decoding on simulated data using multiprocessing.')
@@ -156,28 +158,22 @@ def simulation_step(p: float) -> dict[str, Any]:
         d = entropy_decoder.decode_buffer(channel_llr)
         decoded_entropy.append((*d, hamming_distance(Bits(auto=d[0]), encoded[tx_idx])))
         print("p= ", p, " tx id: ", tx_idx)
-    print("successful pure decoding for bit flip p=", p, ", is: ", sum(int(res[7] == 0) for res in decoded_ldpc), "/", n)
+    print("successful pure decoding for bit flip p=", p, ", is: ", sum(int(res[-1] == 0) for res in decoded_ldpc), "/", n)
     print("successful entropy decoding for bit flip p=", p, ", is: ", sum(int(res[-1] == 0) for res in decoded_entropy), "/",
           n)
     step_results['encoded'] = encoded
     step_results['corrupted'] = rx
     step_results['error_idx'] = errors
     step_results['decoded_ldpc'] = decoded_ldpc
-    step_results["ldpc_buffer_success_rate"] = sum(int(res[7] == 0) for res in decoded_ldpc) / float(n)
+    step_results["ldpc_buffer_success_rate"] = sum(int(res[-1] == 0) for res in decoded_ldpc) / float(n)
 
     step_results["raw_ber"] = no_errors / encoder.n
     step_results["buffer_len"] = len(encoded[0])
-    step_results["ldpc_decoder_ber"] = sum(
-        hamming_distance(encoded[idx], Bits(auto=decoded_ldpc[idx][0]))
-        for idx in range(n)
-    ) / float(n * len(encoded[0]))
+    step_results["ldpc_decoder_ber"] = sum(res[-1] for res in decoded_ldpc) / float(n * len(encoded[0]))
 
     step_results["decoded_entropy"] = decoded_entropy
     step_results["entropy_buffer_success_rate"] = sum(int(res[-1] == 0) for res in decoded_entropy) / float(n)
-    step_results["entropy_decoder_ber"] = sum(
-        hamming_distance(encoded[idx], Bits(auto=decoded_entropy[idx][0]))
-        for idx in range(n)
-    ) / float(n * len(encoded[0]))
+    step_results["entropy_decoder_ber"] = sum(res[-1] for res in decoded_entropy) / float(n * len(encoded[0]))
 
     step_results["n"] = n
     step_results["max_ldpc_iterations"] = ldpc_iterations
@@ -190,9 +186,9 @@ def simulation_step(p: float) -> dict[str, Any]:
 
 
 if __name__ == '__main__':
-    with Pool(processes=processes) as pool:
-        results: list[dict[str, Any]] = pool.map(simulation_step, bit_flip_p)
-    # results: list[dict[str, Any]] = list(map(simulation_step, bit_flip_p))
+    # with Pool(processes=processes) as pool:
+    #     results: list[dict[str, Any]] = pool.map(simulation_step, bit_flip_p)
+    results: list[dict[str, Any]] = list(map(simulation_step, bit_flip_p))
 
     timestamp = f'{str(datetime.date.today())}_{str(datetime.datetime.now().hour)}_{str(datetime.datetime.now().minute)}_' \
                 f'{str(datetime.datetime.now().second)}'
@@ -202,8 +198,14 @@ if __name__ == '__main__':
     with open(os.path.join(path, "cmd.txt"), 'w') as f:
         f.write(cmd)
 
-    with open(os.path.join(path, f'{timestamp}_simulation_entropy_vs_pure_LDPC_weighted_model_{args.dec_type}_decoder.pickle'), 'wb') as f:
+    # with open(os.path.join(path, f'{timestamp}_simulation_entropy_vs_pure_LDPC_weighted_model_{args.dec_type}_decoder.pickle'), 'wb') as f:
+    #     pickle.dump(results, f)
+    with lzma.open(
+            os.path.join(path, f'{timestamp}_simulation_entropy_vs_pure_LDPC_weighted_model_{args.dec_type}_decoder.xz'),
+            "wb") as f:
         pickle.dump(results, f)
+    savemat(os.path.join(path, f'{timestamp}_simulation_entropy_vs_pure_LDPC_weighted_model_{args.dec_type}_decoder.mat'),
+            {"results": results}, do_compression=True)
 
     raw_ber = np.array([p['raw_ber'] for p in results])
     ldpc_ber = np.array([p['ldpc_decoder_ber'] for p in results])
@@ -228,3 +230,5 @@ if __name__ == '__main__':
     with open(os.path.join(path, f'{timestamp}_summary_entropy_vs_pure_LDPC_weighted_model_{args.dec_type}_decoder.pickle'), 'wb') as f:
         pickle.dump(summary, f)
 
+    savemat(os.path.join(path, f'{timestamp}_summary_entropy_vs_pure_LDPC_weighted_model_{args.dec_type}_decoder.mat'),
+            summary)
