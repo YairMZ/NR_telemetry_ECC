@@ -289,7 +289,8 @@ class EntropyBitwiseWeightedDecoder(Decoder):
 
     def decode_buffer(self, channel_llr: Sequence[np.float_]) -> tuple[NDArray[np.int_], NDArray[np.float_], bool, int,
                                                                        NDArray[np.int_], NDArray[np.int_], int,
-                                                                       NDArray[np.float_], NDArray[np.float_]]:
+                                                                       NDArray[np.float_], NDArray[np.float_],
+                                                                       NDArray[np.int_], NDArray[np.int_]]:
         """decodes a buffer
         :param channel_llr: channel llr of bits to decode
         :return: return a tuple (estimated_bits, llr, decode_success, no_iterations, no of mavlink messages found)
@@ -298,7 +299,13 @@ class EntropyBitwiseWeightedDecoder(Decoder):
             - llr is a 1-d np array of soft bit estimates
             - decode_success is a boolean flag stating of the estimated_bits form a valid  code word
             - number of iterations until breaking
+            - syndrome
+            - vnode_validity - for each vnode how many equations failed
             - number of MAVLink messages found within buffer
+            - inferred distribution of "a_model"
+            - inferred distribution of "b_model"
+            - inferred structural bits of "a_model"
+            - inferred structural bits of "b_model"
         """
         estimate, llr, decode_success, iterations, syndrome, vnode_validity = self.ldpc_decoder.decode(channel_llr)
         if decode_success:
@@ -308,7 +315,11 @@ class EntropyBitwiseWeightedDecoder(Decoder):
             if MsgParts.UNKNOWN not in msg_parts:  # buffer fully recovered
                 self.update_model_a(model_bits)
             self.update_model_b(model_bits)
-            return estimate, llr, decode_success, iterations, len(structure), self.a_distribution, self.b_distribution
+
+            return estimate, llr, decode_success, iterations, syndrome, vnode_validity, len(structure), \
+                   self.a_distribution, self.b_distribution, \
+                   self.model_bits_idx[self.a_entropy < self.entropy_threshold], \
+                   self.model_bits_idx[self.b_entropy < self.entropy_threshold]
 
         # rectify llr
         model_llr = self.model_prediction(channel_llr)  # type: ignore
@@ -322,7 +333,9 @@ class EntropyBitwiseWeightedDecoder(Decoder):
         else:  # update model from channel if data is bad
             channel_bits = np.array(channel_llr < 0, dtype=np.int_)[self.model_bits_idx]
             self.update_model_b(channel_bits)
-        return estimate, llr, decode_success, iterations, syndrome, vnode_validity, len(structure), self.a_distribution, self.b_distribution
+        return estimate, llr, decode_success, iterations, syndrome, vnode_validity, len(structure), \
+               self.a_distribution, self.b_distribution, self.model_bits_idx[self.a_entropy < self.entropy_threshold], \
+               self.model_bits_idx[self.b_entropy < self.entropy_threshold]
 
     def update_model_a(self, bits: NDArray[np.int_]) -> None:
         """update model of data. model_a uses only data which mavlink passed crc (and valid codeword)
@@ -371,6 +384,9 @@ class EntropyBitwiseWeightedDecoder(Decoder):
             # for a Bernoulli variable the variance p(1-p), which maximizes at 1/2.
             # Thus, we measure the variance with respect to a uniform distribution in percentage
             self.a_normalized_variance = 2 * np.mean(p1 - np.power(p1, 2))
+        if max(p1) > 1 or min(p1) < 0:
+            print("problematic probability")
+            raise RuntimeError("problematic probability")
         self.a_entropy = entropy(self.a_distribution)
 
     def update_model_b(self, bits: NDArray[np.int_]) -> None:
@@ -420,6 +436,9 @@ class EntropyBitwiseWeightedDecoder(Decoder):
             # for a Bernoulli variable the variance p(1-p), which maximizes at 1/2.
             # Thus, we measure the variance with respect to a uniform distribution in percentage
             self.b_normalized_variance = 2 * np.mean(p1 - np.power(p1, 2))
+        if max(p1) > 1 or min(p1) < 0:
+            print("problematic probability")
+            raise RuntimeError("problematic probability")
         self.b_entropy = entropy(self.b_distribution)
 
     def model_prediction(self, observation: NDArray[np.float_]) -> NDArray[np.float_]:
