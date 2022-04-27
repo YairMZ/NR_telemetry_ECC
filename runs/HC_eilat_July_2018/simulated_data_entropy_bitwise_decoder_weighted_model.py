@@ -17,6 +17,7 @@ import os
 from multiprocessing import Pool
 from scipy.io import savemat
 import lzma
+import pandas as pd
 
 
 parser = argparse.ArgumentParser(description='Run decoding on simulated data using multiprocessing.')
@@ -118,7 +119,6 @@ if args.N > 0:
         cmd += f' --processes {processes}'
 
 
-
 def simulation_step(p: float) -> dict[str, Any]:
     global ldpc_iterations
     global model_length
@@ -161,22 +161,35 @@ def simulation_step(p: float) -> dict[str, Any]:
     print("successful pure decoding for bit flip p=", p, ", is: ", sum(int(res[-1] == 0) for res in decoded_ldpc), "/", n)
     print("successful entropy decoding for bit flip p=", p, ", is: ", sum(int(res[-1] == 0) for res in decoded_entropy), "/",
           n)
-    step_results['encoded'] = encoded
-    step_results['corrupted'] = rx
-    step_results['error_idx'] = errors
-    step_results['decoded_ldpc'] = decoded_ldpc
-    step_results["ldpc_buffer_success_rate"] = sum(int(res[-1] == 0) for res in decoded_ldpc) / float(n)
+    # log data
+    info_errors = np.sum(errors < encoder.k, axis=1)
+    parity_errors = np.sum(errors >= encoder.k, axis=1)
+    zipped = [[np.array(en, dtype=np.int_), np.array(r, dtype=np.int_), er, inf, pa] for en, r, er, inf, pa in
+              zip(encoded, rx, errors, info_errors, parity_errors)]
+    step_results["data"] = pd.DataFrame(zipped, columns=["encoded", "corrupted", "error_idx", "info_errors",
+                                                         "parity_errors"])
 
+    # params
     step_results["raw_ber"] = no_errors / encoder.n
     step_results["buffer_len"] = len(encoded[0])
-    step_results["ldpc_decoder_ber"] = sum(res[-1] for res in decoded_ldpc) / float(n * len(encoded[0]))
+    step_results["number_of_buffers"] = n
+    step_results["max_ldpc_iterations"] = ldpc_iterations
 
-    step_results["decoded_entropy"] = decoded_entropy
+    # decoding
+    decoded_entropy_df = pd.DataFrame(decoded_entropy,
+                                      columns=["estimate", "llr", "decode_success", "iterations", "syndrome",
+                                               "vnode_validity", "mav_msg", "a_dist", "b_dist", "a_structural_idx",
+                                               "b_structural_idx", "hamming"])
+    step_results["decoded_entropy"] = decoded_entropy_df
+    decoded_ldpc_df = pd.DataFrame(decoded_ldpc,
+                                   columns=["estimate", "llr", "decode_success", "iterations", "syndrome",
+                                            "vnode_validity", "mav_msg", "hamming"])
+    step_results['decoded_ldpc'] = decoded_ldpc_df
+    # performance
+    step_results["ldpc_buffer_success_rate"] = sum(int(res[-1] == 0) for res in decoded_ldpc) / float(n)
+    step_results["ldpc_decoder_ber"] = sum(res[-1] for res in decoded_ldpc) / float(n * len(encoded[0]))
     step_results["entropy_buffer_success_rate"] = sum(int(res[-1] == 0) for res in decoded_entropy) / float(n)
     step_results["entropy_decoder_ber"] = sum(res[-1] for res in decoded_entropy) / float(n * len(encoded[0]))
-
-    step_results["n"] = n
-    step_results["max_ldpc_iterations"] = ldpc_iterations
 
     timestamp = f'{str(datetime.date.today())}_{str(datetime.datetime.now().hour)}_{str(datetime.datetime.now().minute)}_' \
                 f'{str(datetime.datetime.now().second)}'
@@ -204,8 +217,6 @@ if __name__ == '__main__':
             os.path.join(path, f'{timestamp}_simulation_entropy_vs_pure_LDPC_weighted_model_{args.dec_type}_decoder.xz'),
             "wb") as f:
         pickle.dump(results, f)
-    savemat(os.path.join(path, f'{timestamp}_simulation_entropy_vs_pure_LDPC_weighted_model_{args.dec_type}_decoder.mat'),
-            {"results": results}, do_compression=True)
 
     raw_ber = np.array([p['raw_ber'] for p in results])
     ldpc_ber = np.array([p['ldpc_decoder_ber'] for p in results])
@@ -232,3 +243,12 @@ if __name__ == '__main__':
 
     savemat(os.path.join(path, f'{timestamp}_summary_entropy_vs_pure_LDPC_weighted_model_{args.dec_type}_decoder.mat'),
             summary)
+
+    for step in results:
+        step['data'] = step['data'].to_dict("list")
+        step['decoded_entropy'] = step['decoded_entropy'].to_dict("list")
+        step['decoded_ldpc'] = step['decoded_ldpc'].to_dict("list")
+
+    summary.update({"results": results})
+    savemat(os.path.join(path, f'{timestamp}_simulation_entropy_vs_pure_LDPC_weighted_model_{args.dec_type}_decoder.mat'),
+            summary, do_compression=True)
