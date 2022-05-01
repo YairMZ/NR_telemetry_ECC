@@ -37,7 +37,7 @@ parser.add_argument("--b_conf_center", default=40, help="center of b_model sigmo
 parser.add_argument("--b_conf_slope", default=0.35, help="slope of b_model sigmoid", type=float)
 parser.add_argument("--confidence", default=0, help="scheme for determining confidence", type=int)
 parser.add_argument("--dec_type", default="BP", help="scheme for determining confidence", type=str)
-parser.add_argument("--corrected_dist", default=0, help="Should we use estimation correction", type=int)
+parser.add_argument("--corrected_dist", default=1, help="Should we use estimation correction", type=int)
 parser.add_argument("--estimator", default="MLE", help="which estimator to use (MLE or Bayes)", type=str)
 
 args = parser.parse_args()
@@ -79,10 +79,10 @@ n = len(encoded)
 # bit indices:
 # {0: 33, 416: 234, 576: 30, 864: 212, 1080: 218}
 
-error_idx = np.vstack(
-    tuple(rng.choice(encoder.n, size=int(encoder.n * bit_flip_p[-1]), replace=False)
-     for _ in range(n))
-)
+# error_idx = np.vstack(
+#     tuple(rng.choice(encoder.n, size=int(encoder.n * bit_flip_p[-1]), replace=False)
+#      for _ in range(n))
+# )
 
 print(__file__)
 print("number of buffers to process: ", n)
@@ -113,6 +113,8 @@ cmd = f'python {__file__} --minflip {args.minflip} --maxflip {args.maxflip} --nf
 
 if window_len is not None:
     cmd += f' --window_len {window_len}'
+else:
+    cmd += f' --window_len 0'
 if args.N > 0:
     cmd += f' --N {n}'
     if processes is not None:
@@ -126,7 +128,7 @@ def simulation_step(p: float) -> dict[str, Any]:
     global clipping_factor
     global args
     global window_len
-    global error_idx
+    # global error_idx
     channel = bsc_llr(p=p)
     ldpc_decoder = DecoderWiFi(spec=WiFiSpecCode.N1944_R23, max_iter=ldpc_iterations, decoder_type=args.dec_type)
     entropy_decoder = EntropyBitwiseWeightedDecoder(DecoderWiFi(spec=WiFiSpecCode.N1944_R23, max_iter=ldpc_iterations,
@@ -141,7 +143,11 @@ def simulation_step(p: float) -> dict[str, Any]:
     rx = []
     decoded_ldpc = []
     decoded_entropy = []
-    errors = error_idx[:, :no_errors]
+    errors = np.vstack(
+        tuple(rng.choice(encoder.n, size=no_errors, replace=False)
+              for _ in range(n))
+    )
+    # errors = error_idx[:, :no_errors]
     step_results: dict[str, Any] = {'data': five_sec_bin[:n]}
     for tx_idx in range(n):
         # pad data - add 72 bits
@@ -199,9 +205,9 @@ def simulation_step(p: float) -> dict[str, Any]:
 
 
 if __name__ == '__main__':
-    # with Pool(processes=processes) as pool:
-    #     results: list[dict[str, Any]] = pool.map(simulation_step, bit_flip_p)
-    results: list[dict[str, Any]] = list(map(simulation_step, bit_flip_p))
+    with Pool(processes=processes) as pool:
+        results: list[dict[str, Any]] = pool.map(simulation_step, bit_flip_p)
+    # results: list[dict[str, Any]] = list(map(simulation_step, bit_flip_p))
 
     timestamp = f'{str(datetime.date.today())}_{str(datetime.datetime.now().hour)}_{str(datetime.datetime.now().minute)}_' \
                 f'{str(datetime.datetime.now().second)}'

@@ -486,6 +486,8 @@ class EntropyBitwiseWeightedDecoder(Decoder):
         elif self.confidence_scheme == 4:  # scale using variance
             a_confidence *= 1 - np.exp(-0.1 / self.a_normalized_variance)
             b_confidence *= 1 - np.exp(-0.1 / self.b_normalized_variance)
+        elif self.confidence_scheme == 5:  # ignore good model
+            a_confidence = 0
 
         clipping = self.clipping_factor * max(llr)  # llr s clipped within +-clipping
         # model llr is calculated as log(Pr(c=0 | model) / Pr(c=1| model))
