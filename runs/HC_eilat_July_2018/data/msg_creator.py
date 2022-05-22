@@ -25,7 +25,7 @@ global_position_int_hdg = global_position_int[10].flatten()
 # per plot of depth, actual mission only until data point number 16521
 initial_time = global_position_int_time[0]
 final_time = global_position_int_time[16521]
-delays = [50000, 100000, 200000, 300000]
+delays = [20000, 50000, 100000, 200000, 300000]
 time_vecs = {str(delay): np.arange(initial_time, final_time, delay) for delay in delays}
 
 # pinger_data
@@ -71,6 +71,7 @@ for delay, time_vec in time_vecs.items():
         idx = np.argmax(global_position_int_time >= t)
         pos = dialect.MAVLink_global_position_int_message(global_position_int_time[idx], global_position_int_lat[idx],
                                                           global_position_int_lon[idx], global_position_int_alt[idx],
+                                                          global_position_int_relative_alt[idx],
                                                           global_position_int_bottom_distance[idx],
                                                           global_position_int_depth[idx], global_position_int_vx[idx],
                                                           global_position_int_vy[idx], global_position_int_vz[idx],
@@ -115,9 +116,11 @@ for delay, time_vec in time_vecs.items():
 with open('hc_to_ship.pickle', 'wb') as file_b:
     pickle.dump(all_msgs, file_b)
 
+two_sec_bin = [[int(b) for b in tx.get("bin")] for tx in all_msgs.get("20000")]
 five_sec_bin = [[int(b) for b in tx.get("bin")] for tx in all_msgs.get("50000")]
 ten_sec_bin = [[int(b) for b in tx.get("bin")] for tx in all_msgs.get("100000")]
 twenty_sec_bin = [[int(b) for b in tx.get("bin")] for tx in all_msgs.get("200000")]
 thirty_sec_bin = [[int(b) for b in tx.get("bin")] for tx in all_msgs.get("300000")]
-savemat("binary_buffers.mat", {"five_sec_delay_binary": five_sec_bin, "ten_sec_delay_binary": ten_sec_bin,
-                               "twenty_sec_delay_binary": twenty_sec_bin, "thirty_sec_delay_binary": thirty_sec_bin})
+savemat("binary_buffers.mat", {"two_sec_delay_binary": two_sec_bin, "five_sec_delay_binary": five_sec_bin,
+                               "ten_sec_delay_binary": ten_sec_bin, "twenty_sec_delay_binary": twenty_sec_bin,
+                               "thirty_sec_delay_binary": thirty_sec_bin})
