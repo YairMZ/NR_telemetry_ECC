@@ -40,7 +40,7 @@ class Cluster:
 
 class BufferClassifier:
     def __init__(self, min_data_size: int, k: int, classify_dist: str = "LL", merge_dist: str = "Hellinger",
-                 weight_scheme: str = "exponential") -> None:
+                 weight_scheme: str = "linear") -> None:
         self.min_data_size: int = min_data_size
         self.k: int = k
         self.clusters: list[Cluster] = []
@@ -109,6 +109,8 @@ class BufferClassifier:
                     pair = c1, c2
             c: Cluster = self.clusters.pop(pair[1])
             self.clusters[pair[0]].merge_cluster(c)
+        for idx, c, in enumerate(self.clusters):
+            c.uid = idx
 
 
 __all__: list[str] = ["Cluster", "BufferClassifier"]
