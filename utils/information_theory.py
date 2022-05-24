@@ -73,7 +73,7 @@ def typical_set_cardinality(n: int, pk: Optional[npt.NDArray[Any]] = None, ent: 
     The cardinality of a typical set is dictated by the AEP. See:
     https://ocw.mit.edu/courses/electrical-engineering-and-computer-science/6-441-information-theory-spring-2010/lecture-notes/MIT6_441S10_lec03.pdf
     :param n: The length of the sequence
-    :param pk: Defaults to None. If specified, a 1d array representing a PMF of a univariate RV.
+    :param pk: Defaults to None. If specified, a 1d array representing a PMF of a uni-variate RV.
     :param ent: The entropy of the variable. Defaults to None, in which case it is inferred from distribution.
     If specified, it is used and pk is ignored
     :param eps: The epsilon used for the calculation
@@ -88,6 +88,21 @@ def typical_set_cardinality(n: int, pk: Optional[npt.NDArray[Any]] = None, ent: 
             ent_f = float(entropy(pk, base=2))
     else:
         ent_f = ent
-    ub = 2**(n * (ent_f + eps))
-    lb = (1 - eps) * 2**(n * (ent_f - eps))
+    ub = 2 ** (n * (ent_f + eps))
+    lb = (1 - eps) * 2 ** (n * (ent_f - eps))
     return lb, ub
+
+
+def hellinger(pk: npt.NDArray[Any], qk: npt.NDArray[Any]) -> npt.NDArray[np.float_]:
+    """compute the Hellinger distance of two discrete distributions as per: https://en.wikipedia.org/wiki/Hellinger_distance.
+    An underlying assumption is that the support of pk and qk is the same. If the distributions are multidimensional, then each
+    row is a dimension, and the number of columns equals the support size.
+    """
+    if pk.ndim == 2 and qk.ndim == 2:
+        return np.sqrt(1 - np.sum(np.sqrt(pk * qk), axis=1))  # type: ignore
+    if pk.ndim == 1 and qk.ndim == 1:
+        return np.sqrt(1 - np.sum(np.sqrt(pk * qk)))  # type: ignore
+    raise ValueError("incorrect dimensions")
+
+
+__all__ = ["prob_with_alphabet", "prob", "entropy", "typical_set_cardinality", "hellinger"]
