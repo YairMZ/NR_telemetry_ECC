@@ -11,6 +11,7 @@ class DecoderType(Enum):
     ENTROPY = auto()
     MAVLINK = auto()
     COMBINED = auto()
+    CLASSIFYING = auto()
 
 
 class Decoder(ABC):
