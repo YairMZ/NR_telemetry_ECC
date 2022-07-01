@@ -34,7 +34,8 @@ parser.add_argument("--dec_type", default="BP", help="scheme for determining con
 parser.add_argument("--classifier_train", default=100, help="number of buffers to use for classifier training", type=int)
 parser.add_argument("--n_clusters", default=1, help="number of clusters", type=int)
 parser.add_argument("--msg_delay", default="50000", help="sampling delay", type=str)
-
+parser.add_argument("--cluster", default=1, help="enable or disable clustering", type=int)
+parser.add_argument("--model_length", default="info", help="model length", type=str)
 
 args = parser.parse_args()
 
@@ -83,7 +84,11 @@ for binary_data in hc_bin_data[:n]:
 for _ in range(args.multiply_data):  # generate more buffers for statistical reproducibility
     encoded.extend(encoded)
 
-model_length = encoder.k
+if args.model_length == 'info':
+    model_length = encoder.k
+else:
+    model_length = encoder.n
+
 n = len(encoded)  # redfine n
 
 # encoded structure: {starting byte index in buffer: msg_id}
@@ -110,12 +115,15 @@ print("decoder type: ", args.dec_type)
 print("classifier_train: ", args.classifier_train)
 print("n_clusters: ", args.n_clusters)
 print("msg_delay", args.msg_delay)
+print("cluster: ", args.cluster)
+print("model_length: ", args.model_length)
 
 
 cmd = f'python {__file__} --minflip {args.minflip} --maxflip {args.maxflip} --nflips {args.nflips} --ldpciterations ' \
       f'{ldpc_iterations} --ent_threshold {thr} --clipping_factor {clipping_factor} --conf_center {args.conf_center} ' \
       f'--conf_slope {args.conf_slope} --multiply_data {args.multiply_data} --dec_type {args.dec_type}  --classifier_train ' \
-      f'{args.classifier_train} --n_clusters {args.n_clusters} --msg_delay {args.msg_delay}'
+      f'{args.classifier_train} --n_clusters {args.n_clusters} --msg_delay {args.msg_delay} --cluster {args.cluster} ' \
+      f'--model_length {args.model_length}'
 
 if window_len is not None:
     cmd += f' --window_len {window_len}'
@@ -143,8 +151,8 @@ def simulation_step(p: float) -> dict[str, Any]:
                                                 model_length=model_length, entropy_threshold=thr,
                                                 clipping_factor=clipping_factor,classifier_training=args.classifier_train,
                                                 n_clusters=args.n_clusters, window_length=window_len,
-                                                conf_center=args.conf_center*args.n_clusters,
-                                                conf_slope=args.conf_slope, bit_flip=p)
+                                                conf_center=args.conf_center,
+                                                conf_slope=args.conf_slope, bit_flip=p, cluster=args.cluster)
     no_errors = int(encoder.n * p)
     rx = []
     decoded_ldpc = []

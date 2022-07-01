@@ -12,7 +12,8 @@ from utils.information_theory import prob, entropy
 class ClassifyingEntropyDecoder(Decoder):
     def __init__(self, ldpc_decoder: LogSpaDecoder, model_length: int, entropy_threshold: float, clipping_factor: float,
                  classifier_training: int, n_clusters: int,
-                 window_length: Optional[int] = None, conf_center: int = 40, conf_slope: float = 0.35, bit_flip: float = 0
+                 window_length: Optional[int] = None, conf_center: int = 40, conf_slope: float = 0.35,
+                 bit_flip: float = 0, cluster: int = 1
                  ) -> None:
         """
         Create a new decoder
@@ -26,8 +27,11 @@ class ClassifyingEntropyDecoder(Decoder):
         self.model_length: int = model_length  # in bits
         self.entropy_threshold = entropy_threshold
         self.model_bits_idx = np.array(self.ldpc_decoder.info_idx)
-        self.model_bits_idx[model_length:] = False
-        self.model_bits_idx = np.flatnonzero(self.model_bits_idx)  # bit indices (among codeword bits) of model bits
+        if model_length >= sum(self.model_bits_idx):
+            self.model_bits_idx = np.array(range(model_length))
+        else:
+            self.model_bits_idx[model_length:] = False
+            self.model_bits_idx = np.flatnonzero(self.model_bits_idx)  # bit indices (among codeword bits) of model bits
         self.clipping_factor = clipping_factor  # The model llr is clipped to +-clipping_factor * max_chanel_llr
 
         self.distributions: list[NDArray[np.float_]] = [np.array([]) for _ in range(n_clusters)]
@@ -40,6 +44,8 @@ class ClassifyingEntropyDecoder(Decoder):
 
         self.classifier = BufferClassifier(classifier_training, n_clusters)
         self.n_clusters = n_clusters
+        self.cluster = bool(cluster)
+        self.running_idx = -1
         super().__init__(DecoderType.CLASSIFYING)
 
     def decode_buffer(self, channel_llr: Sequence[np.float_]) -> tuple[NDArray[np.int_], NDArray[np.float_], bool, int,
@@ -63,10 +69,14 @@ class ClassifyingEntropyDecoder(Decoder):
         # classify
         channel_bits = np.array(channel_llr < 0, dtype=np.int_)[self.model_bits_idx]
         if self.n_clusters > 1:
-            label: int = self.classifier.classify(channel_bits)
-            if label < 0:  # label is negative during training phase of classifier, don't try to use model
-                estimate, llr, decode_success, iterations, syndrome, vnode_validity = self.ldpc_decoder.decode(channel_llr)
-                return estimate, llr, decode_success, iterations, syndrome, vnode_validity, np.array([]), np.array([]), label
+            if self.cluster:
+                label: int = self.classifier.classify(channel_bits)
+                if label < 0:  # label is negative during training phase of classifier, don't try to use model
+                    estimate, llr, decode_success, iterations, syndrome, vnode_validity = self.ldpc_decoder.decode(channel_llr)
+                    return estimate, llr, decode_success, iterations, syndrome, vnode_validity, np.array([]), np.array([]), label
+            else:
+                self.running_idx = (self.running_idx + 1) % self.n_clusters
+                label = self.running_idx
         else:
             label = 0
         model_llr = self.model_prediction(channel_llr, label)  # type: ignore
@@ -84,6 +94,8 @@ class ClassifyingEntropyDecoder(Decoder):
         :param bits: hard estimate for bit values, assumed to be correct.
         """
         if len(bits) != self.model_length:
+            print(self.model_length)
+            print(len(bits))
             raise IncorrectBufferLength()
         arr = bits[np.newaxis]
 
