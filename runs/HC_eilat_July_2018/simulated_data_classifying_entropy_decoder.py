@@ -5,7 +5,6 @@ from ldpc.encoder import EncoderWiFi
 from ldpc.wifi_spec_codes import WiFiSpecCode
 from ldpc.decoder import bsc_llr, DecoderWiFi
 from decoders import ClassifyingEntropyDecoder
-import random
 from utils.bit_operations import hamming_distance
 from typing import Any
 import matplotlib.pyplot as plt
@@ -36,14 +35,13 @@ parser.add_argument("--classifier_train", default=100, help="number of buffers t
 parser.add_argument("--n_clusters", default=1, help="number of clusters", type=int)
 parser.add_argument("--msg_delay", default="50000", help="sampling delay", type=str)
 
+
 args = parser.parse_args()
 
 ldpc_iterations = args.ldpciterations
 thr = args.ent_threshold
 clipping_factor = args.clipping_factor
 processes = args.processes if args.processes > 0 else None
-
-encoder = EncoderWiFi(WiFiSpecCode.N1944_R23)
 
 with open('data/hc_to_ship.pickle', 'rb') as f:
     hc_tx = pickle.load(f)
@@ -56,17 +54,37 @@ window_len = args.window_len if args.window_len > 0 else None
 rng = np.random.default_rng()
 bit_flip_p = np.linspace(args.minflip, args.maxflip, num=args.nflips)
 
+if args.n_clusters == 1:
+    spec = WiFiSpecCode.N1944_R23
+    args.classifier_train = 0
+elif args.n_clusters == 2:
+    spec = WiFiSpecCode.N1296_R12
+elif args.n_clusters == 3:
+    spec = WiFiSpecCode.N648_R34
+encoder = EncoderWiFi(spec=spec)
 encoded = []
 for binary_data in hc_bin_data[:n]:
-    pad_len = encoder.k - len(binary_data)
-    padded = binary_data + Bits(uint=random.getrandbits(pad_len), length=pad_len)
-    encoded.append(encoder.encode(padded))
+    if args.n_clusters == 1:
+        pad_len = encoder.k - len(binary_data)
+        padded = binary_data + Bits(auto=rng.integers(low=0, high=2, size=pad_len))
+        encoded.append(encoder.encode(padded))
+    elif args.n_clusters == 2:
+        padded = binary_data[:576] + Bits(auto=rng.integers(low=0, high=2, size=encoder.k-576))
+        encoded.append(encoder.encode(padded))
+        encoded.append(encoder.encode(binary_data[576:]))
+    elif args.n_clusters == 3:
+        padded = binary_data[:416] + Bits(auto=rng.integers(low=0, high=2, size=encoder.k-416))
+        encoded.append(encoder.encode(padded))
+        padded = binary_data[416:864] + Bits(auto=rng.integers(low=0, high=2, size=encoder.k - (864-416)))
+        encoded.append(encoder.encode(padded))
+        padded = binary_data[864:] + Bits(auto=rng.integers(low=0, high=2, size=encoder.k - (1224-864)))
+        encoded.append(encoder.encode(padded))
 
 for _ in range(args.multiply_data):  # generate more buffers for statistical reproducibility
     encoded.extend(encoded)
 
 model_length = encoder.k
-n = len(encoded)
+n = len(encoded)  # redfine n
 
 # encoded structure: {starting byte index in buffer: msg_id}
 # {0: 33, 52: 234, 72: 30, 108: 212, 135: 218}
@@ -84,8 +102,8 @@ print("number of ldpc decoder iterations: ", ldpc_iterations)
 print("entropy threshold used in entropy decoder:", thr)
 print("entropy decoder window length:", window_len)
 print("clipping factor:", clipping_factor)
-print("b_model center:", args.conf_center)
-print("b_model slope:", args.conf_slope)
+print("model center:", args.conf_center)
+print("model slope:", args.conf_slope)
 print("processes:", args.processes)
 print("multiply data:", args.multiply_data)
 print("decoder type: ", args.dec_type)
@@ -117,14 +135,16 @@ def simulation_step(p: float) -> dict[str, Any]:
     global args
     global window_len
     global n
+    global spec
     channel = bsc_llr(p=p)
-    ldpc_decoder = DecoderWiFi(spec=WiFiSpecCode.N1944_R23, max_iter=ldpc_iterations, decoder_type=args.dec_type)
-    entropy_decoder = ClassifyingEntropyDecoder(DecoderWiFi(spec=WiFiSpecCode.N1944_R23, max_iter=ldpc_iterations,
+    ldpc_decoder = DecoderWiFi(spec=spec, max_iter=ldpc_iterations, decoder_type=args.dec_type)
+    entropy_decoder = ClassifyingEntropyDecoder(DecoderWiFi(spec=spec, max_iter=ldpc_iterations,
                                                                 decoder_type=args.dec_type),
                                                 model_length=model_length, entropy_threshold=thr,
                                                 clipping_factor=clipping_factor,classifier_training=args.classifier_train,
                                                 n_clusters=args.n_clusters, window_length=window_len,
-                                                conf_center=args.conf_center, conf_slope=args.conf_slope, bit_flip=p)
+                                                conf_center=args.conf_center*args.n_clusters,
+                                                conf_slope=args.conf_slope, bit_flip=p)
     no_errors = int(encoder.n * p)
     rx = []
     decoded_ldpc = []
@@ -133,12 +153,10 @@ def simulation_step(p: float) -> dict[str, Any]:
         tuple(rng.choice(encoder.n, size=no_errors, replace=False)
               for _ in range(n))
     )
-    # errors = error_idx[:, :no_errors]
     step_results: dict[str, Any] = {'data': hc_bin_data[:n]}
     for tx_idx in range(n):
         # pad data - add 72 bits
         corrupted = BitArray(encoded[tx_idx])
-        # error_idx = rng.choice(len(corrupted), size=no_errors, replace=False)
         for idx in errors[tx_idx]:
             corrupted[idx] = not corrupted[idx]
         rx.append(corrupted)
@@ -168,7 +186,7 @@ def simulation_step(p: float) -> dict[str, Any]:
     # decoding
     decoded_entropy_df = pd.DataFrame(decoded_entropy,
                                       columns=["estimate", "llr", "decode_success", "iterations", "syndrome",
-                                               "vnode_validity", "dist", "structural_idx", "hamming"])
+                                               "vnode_validity", "dist", "structural_idx", "cluster_label", "hamming"])
     step_results["decoded_entropy"] = decoded_entropy_df
     decoded_ldpc_df = pd.DataFrame(decoded_ldpc,
                                    columns=["estimate", "llr", "decode_success", "iterations", "syndrome",

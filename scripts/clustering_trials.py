@@ -2,6 +2,8 @@ import pickle
 from bitstring import Bits, BitArray
 import numpy as np
 from inference import BufferClassifier
+from scipy.io import savemat
+import os
 
 
 with open('../runs/HC_eilat_July_2018/data/hc_to_ship.pickle', 'rb') as f:
@@ -45,6 +47,8 @@ for b in two_sec_bin:
 classifier = BufferClassifier(n_training, n_classes, classify_dist="LL", merge_dist="Hellinger", weight_scheme=weight_scheme)
 actual_classes = np.zeros(len(buffers), dtype=np.int_)
 labels = np.zeros(len(buffers), dtype=np.int_)
+savemat(f"n_classes_{n_classes}_clustering_data.mat",
+        {f"clustering_data_{n_classes}": buffers}, do_compression=True)
 for idx, b in enumerate(buffers):
     actual_classes[idx] = b[1]
     labels[idx] = classifier.classify(b[0])
@@ -86,6 +90,8 @@ for b in two_sec_bin:
 classifier = BufferClassifier(n_training, n_classes, classify_dist="LL", merge_dist="Hellinger", weight_scheme=weight_scheme)
 actual_classes = np.zeros(len(buffers), dtype=np.int_)
 labels = np.zeros(len(buffers), dtype=np.int_)
+savemat(f"n_classes_{n_classes}_clustering_data.mat",
+        {f"clustering_data_{n_classes}": buffers}, do_compression=True)
 for idx, b in enumerate(buffers):
     actual_classes[idx] = b[1]
     labels[idx] = classifier.classify(b[0])
