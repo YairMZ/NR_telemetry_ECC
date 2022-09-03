@@ -129,3 +129,4 @@ dmypy.json
 .pyre/
 /.idea/
 *.DS_Store
+/runs/Feb_2022/data/ship_logs/

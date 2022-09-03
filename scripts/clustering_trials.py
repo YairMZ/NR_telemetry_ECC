@@ -10,7 +10,7 @@ with open('../runs/HC_eilat_July_2018/data/hc_to_ship.pickle', 'rb') as f:
     hc_tx = pickle.load(f)
 rng = np.random.default_rng()
 two_sec_bin = [Bits(auto=tx.get("bin")) for tx in hc_tx.get("20000")]
-weight_scheme = "linear"  # see implemented schemes in merge_clusters method of BufferClassifier
+weight_scheme = "sqrt"  # see implemented schemes in merge_clusters method of BufferClassifier
 print(weight_scheme)
 
 
