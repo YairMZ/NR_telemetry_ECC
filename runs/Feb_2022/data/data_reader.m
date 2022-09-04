@@ -489,6 +489,7 @@ feb_14_succsess_rate = sum([ship_feb_14_rx.success])/length(ship_feb_14_rx)
 feb_16_raw_ber = double([ship_feb_16_rx.input_ber]);
 feb_16_succsess_rate = sum([ship_feb_16_rx.success])/length(ship_feb_16_rx)
 
+overall_success_rate = (sum([ship_feb_16_rx.success]) + sum([ship_feb_14_rx.success]))/(length(ship_feb_14_rx) + length(ship_feb_16_rx))
 successeful_decodeing_ber = [feb_14_raw_ber([ship_feb_14_rx.success]==1), feb_16_raw_ber([ship_feb_16_rx.success]==1)];
 unsuccesseful_decodeing_ber = [feb_14_raw_ber([ship_feb_14_rx.success]==0), feb_16_raw_ber([ship_feb_16_rx.success]==0)];
 % omit bad data
