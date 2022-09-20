@@ -28,9 +28,17 @@ args = parser.parse_args()
 ldpc_iterations = args.ldpciterations
 thr = args.ent_threshold
 clipping_factor = args.clipping_factor
+if args.experiment_date == 'all':
+    tx = np.genfromtxt(f'data/feb_14_tx.csv', dtype=np.uint8, delimiter=',')
+    rx = np.genfromtxt(f'data/feb_14_llr.csv', dtype=np.float_, delimiter=',')
 
-tx = np.genfromtxt(f'data/feb_{args.experiment_date}_tx.csv', dtype=np.uint8, delimiter=',')
-rx = np.genfromtxt(f'data/feb_{args.experiment_date}_llr.csv', dtype=np.float_, delimiter=',')
+    temp = np.genfromtxt(f'data/feb_16_tx.csv', dtype=np.uint8, delimiter=',')
+    tx = np.vstack((tx, temp))
+    temp = np.genfromtxt(f'data/feb_16_llr.csv', dtype=np.float_, delimiter=',')
+    rx = np.vstack((rx, temp))
+else:
+    tx = np.genfromtxt(f'data/feb_{args.experiment_date}_tx.csv', dtype=np.uint8, delimiter=',')
+    rx = np.genfromtxt(f'data/feb_{args.experiment_date}_llr.csv', dtype=np.float_, delimiter=',')
 
 h = AList.from_file("spec/4098_3095_non_sys_h.alist")
 number_of_messages, n = rx.shape
@@ -40,6 +48,7 @@ window_len = args.window_len if args.window_len > 0 else None
 model_length = k if args.model_length == 'info' else n
 
 print(__file__)
+print(datetime.datetime.now())
 print("number of buffers to process: ", number_of_messages)
 print("number of ldpc decoder iterations: ", ldpc_iterations)
 print("entropy threshold used in entropy decoder:", thr)
@@ -75,6 +84,7 @@ errors = 2 * np.ones(rx.shape)
 
 for tx_idx in range(number_of_messages):
     d = ldpc_decoder.decode(rx[tx_idx, :])
+    ldpc_success = d[2]
     if tx[tx_idx, 0] < 2:  # valid tx identified
         errors[tx_idx, :] = tx[tx_idx, :] != (rx[tx_idx, :] < 0)
         hamm = hamming_distance(d[0], tx[tx_idx, :])
@@ -82,12 +92,13 @@ for tx_idx in range(number_of_messages):
         hamm = -1
     decoded_ldpc.append((*d, hamm))
     d = entropy_decoder.decode_buffer(rx[tx_idx, :])
+    entropy_success = d[2]
     if tx[tx_idx, 0] < 2:  # valid tx identified
         hamm = hamming_distance(d[0], tx[tx_idx, :])
     else:
         hamm = -1
     decoded_entropy.append((*d, hamm))
-    print(" tx id: ", tx_idx)
+    print("tx id: ", tx_idx, ", ldpc: ", ldpc_success, ", entropy: ", entropy_success)
 
 print("successful pure decoding is: ", sum(res[2] for res in decoded_ldpc), "/", number_of_messages)
 print("successful entropy decoding is: ", sum(res[2] for res in decoded_entropy), "/", number_of_messages)
@@ -149,3 +160,8 @@ results['decoded_ldpc'] = results['decoded_ldpc'].to_dict("list")
 results['args'] = args
 
 savemat(os.path.join(path, f'{timestamp}_experimental_data_analysis.mat'), results, do_compression=True)
+
+summary_txt = f'successful pure decoding is: {sum(res[2] for res in decoded_ldpc)}/{number_of_messages}\n' \
+          f'successful entropy decoding is: {sum(res[2] for res in decoded_entropy)}/{number_of_messages}'
+with open(os.path.join(path, "summary.txt"), 'w') as f:
+    f.write(summary_txt)

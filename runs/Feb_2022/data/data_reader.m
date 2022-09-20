@@ -114,6 +114,10 @@ mask = logical([1, dt > minutes(5)]);
 % plot(t,'-o')
 % hold on
 % plot(find(mask),t(mask),'*','MarkerSize',12)
+% title('ship feb 14 rx')
+% set(gca,'FontSize',16)
+% saveas(gcf,'exp_figures/ship_feb_14_rx_times.eps','epsc')
+
 mission = 0;
 for idx=1:length(mask)
     if mask(idx) == 1
@@ -130,6 +134,10 @@ mask = logical([1, dt > minutes(5)]);
 % plot(t,'-o')
 % hold on
 % plot(find(mask),t(mask),'*','MarkerSize',12)
+% title('ship feb 16 rx')
+% set(gca,'FontSize',16)
+% saveas(gcf,'exp_figures/ship_feb_16_rx_times.eps','epsc')
+
 mission = 0;
 for idx=1:length(mask)
     if mask(idx) == 1
@@ -147,6 +155,10 @@ mask = logical([1, dt > minutes(5)]);
 % plot(t,'-o')
 % hold on
 % plot(find(mask),t(mask),'*','MarkerSize',12)
+% title('HC feb 14 tx')
+% set(gca,'FontSize',16)
+% saveas(gcf,'exp_figures/HC_feb_14_tx_times.eps','epsc')
+
 mission = 0;
 for idx=1:length(mask)
     if mask(idx) == 1
@@ -163,6 +175,10 @@ mask = logical([1, dt > minutes(5)]);
 % plot(t,'-o')
 % hold on
 % plot(find(mask),t(mask),'*','MarkerSize',12)
+% title('HC feb 16 tx')
+% set(gca,'FontSize',16)
+% saveas(gcf,'exp_figures/HC_feb_16_tx_times.eps','epsc')
+
 mission = 0;
 for idx=1:length(mask)
     if mask(idx) == 1
@@ -484,8 +500,6 @@ clear missing_tx idx buff r lags m i delay missing below above delta shift ii rx
 feb_14_raw_ber = double([ship_feb_14_rx.input_ber]);
 feb_14_succsess_rate = sum([ship_feb_14_rx.success])/length(ship_feb_14_rx)
 
-
-
 feb_16_raw_ber = double([ship_feb_16_rx.input_ber]);
 feb_16_succsess_rate = sum([ship_feb_16_rx.success])/length(ship_feb_16_rx)
 
@@ -503,8 +517,37 @@ h2 = histogram(unsuccesseful_decodeing_ber);
 h2.BinWidth = 0.02;
 xlabel('input ber')
 legend('successful decodeing','unsuccessful decodeing')
+%% success rate vs ber
+bin_width = 0.02;
+max_input_ber = max([feb_14_raw_ber feb_16_raw_ber]);
+n_bins = ceil(max_input_ber/bin_width);
+bin_edges = 0:bin_width:max_input_ber+bin_width;
 
-clear h1 h2
+feb_14_succsess = [ship_feb_14_rx.success];
+feb_16_succsess = [ship_feb_16_rx.success];
+
+success_rate_per_input_ber = zeros(1,n_bins);
+attempts_per_input_ber = zeros(1,n_bins);
+
+for bin_idx = 1:length(bin_edges)-1
+    mask = (feb_14_raw_ber >= bin_edges(bin_idx)) & (feb_14_raw_ber < bin_edges(bin_idx+1));
+    success = feb_14_succsess(mask);
+    mask = (feb_16_raw_ber >= bin_edges(bin_idx)) & (feb_16_raw_ber < bin_edges(bin_idx+1));
+    success = [success feb_16_succsess(mask)];
+    attempts_per_input_ber(bin_idx) = length(success);
+    success_rate_per_input_ber(bin_idx) = sum(success)/length(success);
+end
+figure;
+histogram('BinEdges',bin_edges,'BinCounts',attempts_per_input_ber)
+xlabel('imput ber')
+ylabel('attempts')
+
+figure;
+plot(bin_edges(1:end-1)+bin_width/2,success_rate_per_input_ber,'*')
+xlabel('imput ber')
+ylabel('success rate')
+
+clear success_rate max_input_ber n_bins bin_edges feb_14_succsess feb_16_succsess bin_idx mask success
 %% llr
 feb_16_llr = double(reshape([ship_feb_16_rx.Rawbits],4098,[]).');
 % writematrix(feb_16_llr, 'feb_16_llr.csv');
@@ -528,3 +571,6 @@ for ii = 1:length(ship_feb_16_rx)
 end
 % writematrix(feb_16_tx, 'feb_16_tx.csv');
 clear ii
+
+%% save mat file
+save('parsed_data.mat')
