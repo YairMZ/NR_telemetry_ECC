@@ -131,3 +131,4 @@ dmypy.json
 *.DS_Store
 /runs/Feb_2022/data/ship_logs/
 *.mat
+/runs/Feb_2022/results/

@@ -517,6 +517,15 @@ h2 = histogram(unsuccesseful_decodeing_ber);
 h2.BinWidth = 0.02;
 xlabel('input ber')
 legend('successful decodeing','unsuccessful decodeing')
+
+figure
+h1 = histogram([feb_14_raw_ber(feb_14_raw_ber>=0), feb_16_raw_ber(feb_16_raw_ber>=0)]);
+h1.BinWidth = 0.02;
+xlabel('Input ber')
+set(gca,'FontSize',16)
+saveas(gcf,'exp_figures/raw_ber','svg')
+
+clear h1 h2
 %% success rate vs ber
 bin_width = 0.02;
 max_input_ber = max([feb_14_raw_ber feb_16_raw_ber]);
@@ -572,5 +581,23 @@ end
 % writematrix(feb_16_tx, 'feb_16_tx.csv');
 clear ii
 
+%% repetitions of each tx
+t = table([ship_feb_16_rx.time_stamp].');
+counts = groupsummary(t,1);
+figure
+histogram(counts.GroupCount,-0.5:1:16)
+clear t
+
+%% non_repeated_tx
+% all tx messages non repeated for use in simulation only
+non_repeated_tx = zeros(length(hc_feb_14_tx)+length(hc_feb_16_tx),4098);
+for ii = 1:length(hc_feb_14_tx)
+    non_repeated_tx(ii,:) = hc_feb_14_tx(ii).coded_bin;
+end
+for ii = 1:length(hc_feb_16_tx)
+    non_repeated_tx(length(hc_feb_14_tx)+ii,:) = hc_feb_16_tx(ii).coded_bin;
+end
+% writematrix(non_repeated_tx, 'non_repeated_tx.csv');
+clear ii
 %% save mat file
-save('parsed_data.mat')
+% save('parsed_data.mat')

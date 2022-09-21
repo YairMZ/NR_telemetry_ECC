@@ -150,7 +150,7 @@ with open(os.path.join(path, "cmd.txt"), 'w') as f:
     f.write(cmd)
 
 with lzma.open(
-        os.path.join(path, f'{timestamp}_simulation_classifying_entropy_{args.dec_type}_decoder.xz'),
+        os.path.join(path, f'{timestamp}_experimental_data_analysis.xz'),
         "wb") as f:
     pickle.dump(results, f)
 
