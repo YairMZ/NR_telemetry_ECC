@@ -31,3 +31,6 @@ def hamming_distance(a: Union[bitstring.Bits, bytes, int, NDArray[np.int_]],
     if not (isinstance(a, bitstring.Bits) and isinstance(b, bitstring.Bits)):
         raise TypeError()
     return int((a ^ b).count(True))
+
+
+__all__ = ['hamming_distance']

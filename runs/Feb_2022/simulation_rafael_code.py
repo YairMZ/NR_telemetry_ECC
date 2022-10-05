@@ -14,6 +14,8 @@ from multiprocessing import Pool
 from scipy.io import savemat
 import lzma
 import pandas as pd
+from utils import setup_logger
+import shutil
 
 
 parser = argparse.ArgumentParser(description='Run decoding on simulated data using multiprocessing.')
@@ -58,22 +60,7 @@ word_len = 4098
 model_length = k if args.model_length == 'info' else word_len
 n = len(encoded)  # redfine n
 
-
-print(__file__)
-print("number of buffers to process: ", n)
-print("smallest bit flip probability: ", args.minflip)
-print("largest bit flip probability: ", args.maxflip)
-print("number of bit flips: ", args.nflips)
-print("number of ldpc decoder iterations: ", ldpc_iterations)
-print("entropy threshold used in entropy decoder:", thr)
-print("entropy decoder window length:", window_len)
-print("clipping factor:", clipping_factor)
-print("model center:", args.conf_center)
-print("model slope:", args.conf_slope)
-print("processes:", args.processes)
-print("multiply data:", args.multiply_data)
-print("decoder type: ", args.dec_type)
-print("model_length: ", args.model_length)
+logger = setup_logger(name=__file__, log_file=os.path.join("results/", 'log.log'))
 
 
 cmd = f'python {__file__} --minflip {args.minflip} --maxflip {args.maxflip} --nflips {args.nflips} --ldpciterations ' \
@@ -103,6 +90,7 @@ def simulation_step(p: float) -> dict[str, Any]:
     global k
     global word_len
     global h
+    global logger
     channel = bsc_llr(p=p)
     ldpc_decoder = LogSpaDecoder(h=h.to_array(), max_iter=ldpc_iterations, decoder_type=args.dec_type,
                              info_idx=np.array([True] * k + [False] * (word_len - k)))
@@ -131,10 +119,9 @@ def simulation_step(p: float) -> dict[str, Any]:
         decoded_ldpc.append((*d, hamming_distance(d[0], encoded[tx_idx])))
         d = entropy_decoder.decode_buffer(channel_llr)
         decoded_entropy.append((*d, hamming_distance(d[0], encoded[tx_idx])))
-        print("p= ", p, " tx id: ", tx_idx)
-    print("successful pure decoding for bit flip p=", p, ", is: ", sum(int(res[-1] == 0) for res in decoded_ldpc), "/", n)
-    print("successful entropy decoding for bit flip p=", p, ", is: ", sum(int(res[-1] == 0) for res in decoded_entropy), "/",
-          n)
+        logger.info(f"p= {p}, tx id: {tx_idx}")
+    logger.info(f"successful pure decoding for bit flip p= {p}, is: {sum(int(r[-1] == 0) for r in decoded_ldpc)}/{n}")
+    logger.info(f"successful entropy decoding for bit flip p= {p}, is: {sum(int(r[-1] == 0) for r in decoded_entropy)}/{n}")
     # log data
     info_errors = np.sum(errors < k, axis=1)
     parity_errors = np.sum(errors >= k, axis=1)
@@ -172,56 +159,83 @@ def simulation_step(p: float) -> dict[str, Any]:
 
 
 if __name__ == '__main__':
-    with Pool(processes=processes) as pool:
-        results: list[dict[str, Any]] = pool.map(simulation_step, bit_flip_p)
-    # results: list[dict[str, Any]] = list(map(simulation_step, bit_flip_p))
 
     timestamp = f'{str(datetime.date.today())}_{str(datetime.datetime.now().hour)}_{str(datetime.datetime.now().minute)}_' \
                 f'{str(datetime.datetime.now().second)}'
 
     path = os.path.join("results/", timestamp)
     os.mkdir(path)
+
+    logger.info(__file__)
+    logger.info(f"number of buffers to process: {n}")
+    logger.info(f"smallest bit flip probability: {args.minflip}")
+    logger.info(f"largest bit flip probability: {args.maxflip}")
+    logger.info(f"number of bit flips: {args.nflips}")
+    logger.info(f"number of ldpc decoder iterations: {ldpc_iterations}")
+    logger.info(f"entropy threshold used in entropy decoder: {thr}")
+    logger.info(f"entropy decoder window length: {window_len}")
+    logger.info(f"clipping factor: {clipping_factor}")
+    logger.info(f"model center: {args.conf_center}")
+    logger.info(f"model slope: {args.conf_slope}")
+    logger.info(f"processes: {args.processes}")
+    logger.info(f"multiply data: {args.multiply_data}")
+    logger.info(f"decoder type: {args.dec_type}")
+    logger.info(f"model_length: {args.model_length}")
+
     with open(os.path.join(path, "cmd.txt"), 'w') as f:
         f.write(cmd)
+    logger.info(cmd)
 
-    # with open(os.path.join(path, f'{timestamp}_simulation_entropy_vs_pure_LDPC_weighted_model_{args.dec_type}_decoder.pickle'), 'wb') as f:
-    #     pickle.dump(results, f)
-    with lzma.open(
-            os.path.join(path, f'{timestamp}_simulation_rafael_code.xz'),
-            "wb") as f:
-        pickle.dump(results, f)
+    with Pool(processes=processes) as pool:
+        results: list[dict[str, Any]] = pool.map(simulation_step, bit_flip_p)
+    # results: list[dict[str, Any]] = list(map(simulation_step, bit_flip_p))
 
-    raw_ber = np.array([p['raw_ber'] for p in results])
-    ldpc_ber = np.array([p['ldpc_decoder_ber'] for p in results])
-    entropy_ber = np.array([p['entropy_decoder_ber'] for p in results])
-    fig = plt.figure()
-    plt.plot(raw_ber, ldpc_ber, 'bo', raw_ber, raw_ber, 'g^', raw_ber, entropy_ber, 'r*')
-    plt.xlabel("BSC bit flip probability p")
-    plt.ylabel("post decoding BER")
-    fig.savefig(os.path.join(path, "ber_vs_error_p.eps"), dpi=150)
+    try:
+        os.mkdir(os.path.join(path, f'{timestamp}_simulation_entropy_vs_pure_LDPC_weighted_model_{args.dec_type}_decoder'))
+        with lzma.open(
+                os.path.join(path, f'{timestamp}_simulation_rafael_code.xz'),
+                "wb") as f:
+            pickle.dump(results, f)
+        logger.info("saved compressed results file")
 
-    figure = plt.figure()
-    ldpc_buffer_success_rate = np.array([p['ldpc_buffer_success_rate'] for p in results])
-    entropy_buffer_success_rate = np.array([p['entropy_buffer_success_rate'] for p in results])
-    plt.plot(raw_ber, ldpc_buffer_success_rate, 'bo', raw_ber, entropy_buffer_success_rate, 'r*')
-    plt.xlabel("BSC bit flip probability p")
-    plt.ylabel("Decode success rate")
-    figure.savefig(os.path.join(path, "buffer_success_rate_vs_error_p.eps"), dpi=150)
+        raw_ber = np.array([p['raw_ber'] for p in results])
+        ldpc_ber = np.array([p['ldpc_decoder_ber'] for p in results])
+        entropy_ber = np.array([p['entropy_decoder_ber'] for p in results])
+        fig = plt.figure()
+        plt.plot(raw_ber, ldpc_ber, 'bo', raw_ber, raw_ber, 'g^', raw_ber, entropy_ber, 'r*')
+        plt.xlabel("BSC bit flip probability p")
+        plt.ylabel("post decoding BER")
+        fig.savefig(os.path.join(path, "ber_vs_error_p.eps"), dpi=150)
 
-    summary = {"args": args, "raw_ber": raw_ber, "ldpc_ber": ldpc_ber, "entropy_ber": entropy_ber,
-               "ldpc_buffer_success_rate": ldpc_buffer_success_rate,
-               "entropy_buffer_success_rate": entropy_buffer_success_rate}
-    with open(os.path.join(path, f'{timestamp}_summary_simulation_rafael_code.pickle'), 'wb') as f:
-        pickle.dump(summary, f)
+        figure = plt.figure()
+        ldpc_buffer_success_rate = np.array([p['ldpc_buffer_success_rate'] for p in results])
+        entropy_buffer_success_rate = np.array([p['entropy_buffer_success_rate'] for p in results])
+        plt.plot(raw_ber, ldpc_buffer_success_rate, 'bo', raw_ber, entropy_buffer_success_rate, 'r*')
+        plt.xlabel("BSC bit flip probability p")
+        plt.ylabel("Decode success rate")
+        figure.savefig(os.path.join(path, "buffer_success_rate_vs_error_p.eps"), dpi=150)
 
-    savemat(os.path.join(path, f'{timestamp}_summary_simulation_rafael_code.mat'),
-            summary)
+        logger.info("saved figures")
+        summary = {"args": args, "raw_ber": raw_ber, "ldpc_ber": ldpc_ber, "entropy_ber": entropy_ber,
+                   "ldpc_buffer_success_rate": ldpc_buffer_success_rate,
+                   "entropy_buffer_success_rate": entropy_buffer_success_rate}
+        with open(os.path.join(path, f'{timestamp}_summary_simulation_rafael_code.pickle'), 'wb') as f:
+            pickle.dump(summary, f)
 
-    for step in results:
-        step['data'] = step['data'].to_dict("list")
-        step['decoded_entropy'] = step['decoded_entropy'].to_dict("list")
-        step['decoded_ldpc'] = step['decoded_ldpc'].to_dict("list")
+        savemat(os.path.join(path, f'{timestamp}_summary_simulation_rafael_code.mat'),
+                summary)
+        logger.info("saved summary")
+        for step in results:
+            step['data'] = step['data'].to_dict("list")
+            step['decoded_entropy'] = step['decoded_entropy'].to_dict("list")
+            step['decoded_ldpc'] = step['decoded_ldpc'].to_dict("list")
 
-    summary.update({"results": results})
-    savemat(os.path.join(path, f'{timestamp}_simulation_rafael_code.mat'),
-            summary, do_compression=True)
+        summary["results"] = results
+        savemat(os.path.join(path, f'{timestamp}_simulation_rafael_code.mat'),
+                summary, do_compression=True)
+        logger.info("saved results to mat file")
+        shutil.move("results/log.log",os.path.join(path, "log.log"))
+    except Exception as e:
+        logger.exception(e)
+        shutil.move("results/log.log", os.path.join(path, "log.log"))
+        raise e

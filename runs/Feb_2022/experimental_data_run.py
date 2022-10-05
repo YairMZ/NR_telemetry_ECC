@@ -11,6 +11,8 @@ import os
 from scipy.io import savemat
 import lzma
 import pandas as pd
+from utils import setup_logger
+
 
 parser = argparse.ArgumentParser(description='Run decoding on experimental data.')
 parser.add_argument("--ldpciterations", default=130, help="number of iterations of  LDPC decoder", type=int)
@@ -20,7 +22,7 @@ parser.add_argument("--clipping_factor", default=2, help="dictates maximal and m
 parser.add_argument("--conf_center", default=40, help="center of model sigmoid", type=int)
 parser.add_argument("--conf_slope", default=0.35, help="slope of model sigmoid", type=float)
 parser.add_argument("--dec_type", default="BP", help="scheme for determining confidence", type=str)
-parser.add_argument("--model_length", default="info", help="model length", type=str)
+parser.add_argument("--model_length", default="all", help="model length", type=str)
 parser.add_argument("--experiment_date", default="14", help="date of experiment", type=str)
 
 args = parser.parse_args()
@@ -29,12 +31,12 @@ ldpc_iterations = args.ldpciterations
 thr = args.ent_threshold
 clipping_factor = args.clipping_factor
 if args.experiment_date == 'all':
-    tx = np.genfromtxt(f'data/feb_14_tx.csv', dtype=np.uint8, delimiter=',')
-    rx = np.genfromtxt(f'data/feb_14_llr.csv', dtype=np.float_, delimiter=',')
+    tx = np.genfromtxt('data/feb_14_tx.csv', dtype=np.uint8, delimiter=',')
+    rx = np.genfromtxt('data/feb_14_llr.csv', dtype=np.float_, delimiter=',')
 
-    temp = np.genfromtxt(f'data/feb_16_tx.csv', dtype=np.uint8, delimiter=',')
+    temp = np.genfromtxt('data/feb_16_tx.csv', dtype=np.uint8, delimiter=',')
     tx = np.vstack((tx, temp))
-    temp = np.genfromtxt(f'data/feb_16_llr.csv', dtype=np.float_, delimiter=',')
+    temp = np.genfromtxt('data/feb_16_llr.csv', dtype=np.float_, delimiter=',')
     rx = np.vstack((rx, temp))
 else:
     tx = np.genfromtxt(f'data/feb_{args.experiment_date}_tx.csv', dtype=np.uint8, delimiter=',')
@@ -47,18 +49,26 @@ window_len = args.window_len if args.window_len > 0 else None
 
 model_length = k if args.model_length == 'info' else n
 
-print(__file__)
-print(datetime.datetime.now())
-print("number of buffers to process: ", number_of_messages)
-print("number of ldpc decoder iterations: ", ldpc_iterations)
-print("entropy threshold used in entropy decoder:", thr)
-print("entropy decoder window length:", window_len)
-print("clipping factor:", clipping_factor)
-print("model center:", args.conf_center)
-print("model slope:", args.conf_slope)
-print("decoder type: ", args.dec_type)
-print("model_length: ", args.model_length)
-print("experiment_date: ", args.experiment_date)
+timestamp = f'{str(datetime.date.today())}_{str(datetime.datetime.now().hour)}_{str(datetime.datetime.now().minute)}_' \
+            f'{str(datetime.datetime.now().second)}'
+
+path = os.path.join("results/", timestamp)
+os.mkdir(path)
+
+logger = setup_logger(name=__file__, log_file=os.path.join(path, 'log.log'))
+
+
+logger.info(__file__)
+logger.info(f"number of buffers to process: {number_of_messages}")
+logger.info(f"number of ldpc decoder iterations: {ldpc_iterations}")
+logger.info(f"entropy threshold used in entropy decoder: {thr}")
+logger.info(f"entropy decoder window length: {window_len}")
+logger.info(f"clipping factor: {clipping_factor}")
+logger.info(f"model center: {args.conf_center}")
+logger.info(f"model slope: {args.conf_slope}")
+logger.info(f"decoder type: {args.dec_type}")
+logger.info(f"model_length: {args.model_length}")
+logger.info(f"experiment_date: {args.experiment_date}")
 
 cmd = f'python {__file__} --ldpciterations {ldpc_iterations} --ent_threshold {thr} --clipping_factor {clipping_factor} ' \
       f'--conf_center {args.conf_center} --conf_slope {args.conf_slope} --dec_type {args.dec_type} --model_length ' \
@@ -68,7 +78,10 @@ if window_len is not None:
 else:
     cmd += ' --window_len 0'
 
-# single simulation step
+with open(os.path.join(path, "cmd.txt"), 'w') as f:
+    f.write(cmd)
+logger.info(cmd)
+
 ldpc_decoder = LogSpaDecoder(h=h.to_array(), max_iter=args.ldpciterations, decoder_type=args.dec_type,
                              info_idx=np.array([True] * k + [False] * (n - k)))
 entropy_decoder = ClassifyingEntropyDecoder(
@@ -98,10 +111,10 @@ for tx_idx in range(number_of_messages):
     else:
         hamm = -1
     decoded_entropy.append((*d, hamm))
-    print("tx id: ", tx_idx, ", ldpc: ", ldpc_success, ", entropy: ", entropy_success)
+    logger.info(f"tx id:, {tx_idx}, ldpc: {ldpc_success}, entropy: {entropy_success}")
 
-print("successful pure decoding is: ", sum(res[2] for res in decoded_ldpc), "/", number_of_messages)
-print("successful entropy decoding is: ", sum(res[2] for res in decoded_entropy), "/", number_of_messages)
+logger.info(f"successful pure decoding is: {sum(res[2] for res in decoded_ldpc)}/{number_of_messages}")
+logger.info(f"successful entropy decoding is: {sum(res[2] for res in decoded_entropy)}/{number_of_messages}")
 
 # analyze results
 # log data
@@ -141,17 +154,9 @@ results["ldpc_decoder_ber"] = sum(res[-1] for res in decoded_ldpc if res[-1] >= 
 results["entropy_decoder_ber"] = sum(res[-1] for res in decoded_entropy if res[-1] >= 0) / float(n * sum(good_tx))
 results["input_ber"] = input_ber
 
-timestamp = f'{str(datetime.date.today())}_{str(datetime.datetime.now().hour)}_{str(datetime.datetime.now().minute)}_' \
-            f'{str(datetime.datetime.now().second)}'
-
-path = os.path.join("results/", timestamp)
-os.mkdir(path)
-with open(os.path.join(path, "cmd.txt"), 'w') as f:
-    f.write(cmd)
-
+# save results
 with lzma.open(
-        os.path.join(path, f'{timestamp}_experimental_data_analysis.xz'),
-        "wb") as f:
+        os.path.join(path, f'{timestamp}_experimental_data_analysis.xz'), "wb") as f:
     pickle.dump(results, f)
 
 results['data'] = results['data'].to_dict("list")

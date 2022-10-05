@@ -19,3 +19,6 @@ class IncorrectBufferLength(ValueError):
 class UnsupportedDtype(Exception):
     """Raised when a function receives a ndarray with supported dtype"""
     pass
+
+
+__all__ = ["NonUint8", "IncorrectBufferLength", "UnsupportedDtype"]
