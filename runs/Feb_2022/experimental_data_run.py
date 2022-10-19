@@ -24,6 +24,7 @@ parser.add_argument("--conf_slope", default=0.35, help="slope of model sigmoid",
 parser.add_argument("--dec_type", default="BP", help="scheme for determining confidence", type=str)
 parser.add_argument("--model_length", default="all", help="model length", type=str)
 parser.add_argument("--experiment_date", default="14", help="date of experiment", type=str)
+parser.add_argument("--raw_ber", default=0, help="assumed input ber", type=float)
 
 args = parser.parse_args()
 
@@ -69,10 +70,11 @@ logger.info(f"model slope: {args.conf_slope}")
 logger.info(f"decoder type: {args.dec_type}")
 logger.info(f"model_length: {args.model_length}")
 logger.info(f"experiment_date: {args.experiment_date}")
+logger.info(f"raw_ber: {args.raw_ber}")
 
 cmd = f'python {__file__} --ldpciterations {ldpc_iterations} --ent_threshold {thr} --clipping_factor {clipping_factor} ' \
       f'--conf_center {args.conf_center} --conf_slope {args.conf_slope} --dec_type {args.dec_type} --model_length ' \
-      f'{args.model_length} --experiment_date {args.experiment_date}'
+      f'{args.model_length} --experiment_date {args.experiment_date} --raw_ber {args.raw_ber}'
 if window_len is not None:
     cmd += f' --window_len {window_len}'
 else:
@@ -89,7 +91,7 @@ entropy_decoder = ClassifyingEntropyDecoder(
         [True] * k + [False] * (n - k))),
     model_length=model_length, entropy_threshold=thr, clipping_factor=clipping_factor,
     classifier_training=0, n_clusters=1, window_length=window_len, conf_center=args.conf_center,
-    conf_slope=args.conf_slope, bit_flip=0)
+    conf_slope=args.conf_slope, bit_flip=args.raw_ber)
 
 decoded_ldpc = []
 decoded_entropy = []
