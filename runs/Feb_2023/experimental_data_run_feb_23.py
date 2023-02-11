@@ -26,6 +26,7 @@ parser.add_argument("--model_length", default="all", help="model length", type=s
 parser.add_argument("--experiment_date", default="17", help="date of experiment", type=str)
 parser.add_argument("--raw_ber", default=0, help="assumed input ber", type=float)
 parser.add_argument("--msg_type", default=0, help="telemrtry, 2023, 4048 or CDMA", type=int)
+parser.add_argument("--separate_models", default=0, help="use separate models for 2023, 4048 pics", type=int)
 
 args = parser.parse_args()
 
@@ -36,17 +37,27 @@ if args.msg_type == 0:
     msg_type = 'telemetry'
     h = AList.from_file("spec/4098_3095_non_sys_h.alist")
     k = 984
+    n_clusters = 1
 elif args.msg_type == 1:
     msg_type = '2023'
     h = AList.from_file("spec/h2023.alist")
     k = 2023*8
+    if args.separate_models == 0:
+        n_clusters = 1
+    else:
+        n_clusters = 4
 elif args.msg_type == 2:
     msg_type = '4048'
     h = AList.from_file("spec/h4048.alist")
     k = 4048 * 8
+    if args.separate_models == 0:
+        n_clusters = 1
+    else:
+        n_clusters = 2
 elif args.msg_type == 3:
     msg_type = 'cdma'
     k = 18*8
+    n_clusters = 1
     ## TODO missing code
 
 if args.experiment_date == 'all':
@@ -104,14 +115,14 @@ with open(os.path.join(path, "cmd.txt"), 'w') as f:
     f.write(cmd)
 logger.info(cmd)
 
-ldpc_decoder = LogSpaDecoder(h=h.to_array(), max_iter=args.ldpciterations, decoder_type=args.dec_type,
+ldpc_decoder = LogSpaDecoder(h=h.to_sparse(), max_iter=args.ldpciterations, decoder_type=args.dec_type,
                              info_idx=np.array([True] * k + [False] * (n - k)))
 entropy_decoder = ClassifyingEntropyDecoder(
-    LogSpaDecoder(h=h.to_array(), max_iter=args.ldpciterations, decoder_type=args.dec_type, info_idx=np.array(
+    LogSpaDecoder(h=h.to_sparse(), max_iter=args.ldpciterations, decoder_type=args.dec_type, info_idx=np.array(
         [True] * k + [False] * (n - k))),
     model_length=model_length, entropy_threshold=thr, clipping_factor=clipping_factor,
-    classifier_training=0, n_clusters=1, window_length=window_len, conf_center=args.conf_center,
-    conf_slope=args.conf_slope, bit_flip=args.raw_ber)
+    classifier_training=0, n_clusters=n_clusters, window_length=window_len, conf_center=args.conf_center,
+    conf_slope=args.conf_slope, bit_flip=args.raw_ber, cluster=0)
 
 decoded_ldpc = []
 decoded_entropy = []
