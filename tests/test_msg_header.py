@@ -67,7 +67,7 @@ class TestFrameHeader:
 
     def test_length(self) -> None:
         frame = FrameHeader(rand_msg(), rand_uint8(), rand_uint8(), rand_uint8())
-        assert frame.length == meta.msgs_length[frame.msg_id]
+        assert frame.length == meta.msgs_payload_length[frame.msg_id]
 
     def test_bitstring(self) -> None:
         frame = FrameHeader(rand_msg(), rand_uint8(), rand_uint8(), rand_uint8())

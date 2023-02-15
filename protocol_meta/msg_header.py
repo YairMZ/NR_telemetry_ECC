@@ -30,7 +30,7 @@ def is_valid_header(buffer: bytes) -> bool:
     # buffer[0] stx
     # buffer[5]  msg_id
     # buffer[1]  msg_len
-    return buffer[0] == meta.stx and buffer[5] in meta.msgs_length.keys() and meta.msgs_length.get(buffer[5]) == buffer[1]
+    return buffer[0] == meta.stx and buffer[5] in meta.msgs_payload_length.keys() and meta.msgs_payload_length.get(buffer[5]) == buffer[1]
 
 
 def hamming_distance_2_valid_header(buffer: bytes, max_len: Optional[int] = None) -> tuple[int, int]:
@@ -52,7 +52,7 @@ def hamming_distance_2_valid_header(buffer: bytes, max_len: Optional[int] = None
     min_dist = 17  # since we're comparing the Hamming distance of two byte pairs, hamming distance cannot exceed 16
     chosen_msg_id: int = -1
 
-    for msg_id, msg_len in meta.msgs_length.items():
+    for msg_id, msg_len in meta.msgs_payload_length.items():
         candidate_dist = hamming_distance(msg_len, buffer[1]) + hamming_distance(msg_id, buffer[5])
         if candidate_dist < min_dist and (max_len is None or msg_len <= max_len):
             min_dist = candidate_dist
@@ -70,8 +70,8 @@ class FrameHeader:
     def __init__(self, msg_id: int, sys_id: int, comp_id: int, seq: int):
         if sys_id < 0 or comp_id < 0 or seq < 0 or sys_id > 255 or comp_id > 255 or seq > 255:
             raise NonUint8("invalid input, msg_id: {}, comp_id: {}, seq: {}".format(msg_id, comp_id, seq))
-        if msg_id in meta.msgs_length:
-            length: int = meta.msgs_length.get(msg_id)  # type: ignore
+        if msg_id in meta.msgs_payload_length:
+            length: int = meta.msgs_payload_length.get(msg_id)  # type: ignore
         elif msg_id < 0 or msg_id > 255:
             raise NonUint8(msg_id)
         else:
@@ -124,8 +124,8 @@ class FrameHeader:
     @classmethod
     def from_buffer(cls, buffer: bytes, force_msg_id: Optional[int] = None) -> FrameHeader:
         """
-        construct  aframe header from a buffer
-        :param buffer: buffer of appropriate length
+        construct a frame header from a buffer
+        :param buffer: of appropriate length
         :param force_msg_id: if send the value will be forced as the msg id, ignoring the buffer (for reconstruction)
         :return:
         """

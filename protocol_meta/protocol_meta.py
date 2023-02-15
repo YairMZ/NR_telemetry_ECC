@@ -23,7 +23,7 @@ class MavlinkDialectMeta:
         self.msg_ids: list[int] = msg_ids_
         self.field_lengths: dict[str, int] = field_lengths_
         self.protocol_overhead: int = header_len + crc_len
-        self.msgs_length: dict[int, int] = {msg_id: self.__msg_len(msg_id) for msg_id in msg_ids_}
+        self.msgs_payload_length: dict[int, int] = {msg_id: self.__msg_len(msg_id) for msg_id in msg_ids_}
         self.msgs_fields: dict[int, list[tuple[str, str]]] = {msg_id: self.__msg_fields(msg_id) for msg_id in msg_ids_}
         self.protocol_parser = protocol_parser
 
@@ -57,4 +57,4 @@ class MavlinkDialectMeta:
 
 mav_obj = dialect.MAVLink(1)
 dialect_meta = MavlinkDialectMeta(STX, header_length, crc_length, msg_ids, field_lengths, mav_obj.decode)
-__all__ = ["MAVError", "dialect_meta"]
+__all__ = ["MAVError", "dialect_meta", "field_lengths"]
