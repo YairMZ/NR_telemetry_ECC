@@ -8,6 +8,7 @@ from array import array
 import numpy as np
 import numpy.typing as npt
 from collections.abc import MutableSequence
+from inference.statistical_models import FieldModelCollection
 
 
 class MsgParts(Enum):
@@ -28,6 +29,7 @@ class BufferStructure:
         self.structure: dict[int, int] = msgs
         self.reception_count: int = 0
         self.received_buffers: list[bytes] = []
+        self.field_models: FieldModelCollection = FieldModelCollection()
 
     def __eq__(self, other: Any) -> bool:
         """We define equality of the structure itself, irrespective of self.received_buffers"""
@@ -64,6 +66,9 @@ class BufferStructure:
             if hdr.msg_id != msg_id:
                 return False
         return True
+
+    def set_models(self, models: FieldModelCollection) -> None:
+        self.field_models = models
 
 
 class BufferSegmentation:
@@ -193,7 +198,7 @@ class BufferSegmentation:
         for k, v in buffer_structure.items():
             parsed_msg = meta.protocol_parser(
                 array("B", buffer[k:k + meta.msgs_payload_length[v] + meta.protocol_overhead]))
-            for field in parsed_msg.fieldnames:
-                fields[f'{parsed_msg.name}_{field}'] = eval(f'parsed_msg.{field}')
+            for idx, field in enumerate(parsed_msg.fieldnames):
+                fields[f'{parsed_msg.name}_{field}'] = eval(f'parsed_msg.{field}'), parsed_msg.fieldtypes[idx]
 
         return fields

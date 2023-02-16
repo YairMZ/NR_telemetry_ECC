@@ -1,5 +1,6 @@
 from scipy.stats import norm
 from protocol_meta import field_lengths
+import json
 
 
 class FieldModel:
@@ -12,42 +13,92 @@ class FieldModel:
         self._mean = 0
         self._std = 0
         self.samples = []
-        self.up2date = False
+        self._up2date = False
 
-    def add_sample(self, sample: int) -> None:
-        self.samples.append(sample)
-        self.up2date = False
+    def add_sample(self, sample) -> None:
+        if isinstance(sample, list):
+            self.samples.extend(sample)
+        else:
+            self.samples.append(sample)
+        self._up2date = False
 
     @property
     def mean(self) -> float:
-        if not self.up2date:
+        if not self._up2date:
             self._update()
         return self._mean
 
     @property
     def std(self) -> float:
-        if not self.up2date:
+        if not self._up2date:
             self._update()
         return self._std
 
     def _update(self) -> None:
         self._mean, self._std = norm.fit(self.samples)
-        self.up2date = True
+        self._up2date = True
 
     def pdf(self, x: int) -> float:
-        if not self.up2date:
+        if not self._up2date:
             self._update()
         return norm.pdf(x, self._mean, self._std)
 
     def cdf(self, x: int) -> float:
-        if not self.up2date:
+        if not self._up2date:
             self._update()
         return norm.cdf(x, self._mean, self._std)
 
     def classify_value(self, value: float, number_of_stds=2) -> int:
-        if not self.up2date:
+        if not self._up2date:
             self._update()
         if value < self._mean - number_of_stds * self._std or value > self._mean + number_of_stds * self._std:
             return 0
         else:
             return 1
+
+    def __str__(self) -> str:
+        return f"{self.name} ({self.field_type}): {self.mean} +- {self.std}"
+
+
+class FieldModelCollection:
+    def __init__(self, models: dict[str, FieldModel] = None):
+        self._models: dict[str, FieldModel] = {} if models is None else models
+
+    def add_sample(self, field_name: str, sample, field_type: str = "") -> None:
+        if field_name not in self._models.keys():
+            self._models[field_name] = FieldModel(field_name, field_type)
+        self._models[field_name].add_sample(sample)
+
+    def __getitem__(self, key: str) -> FieldModel:
+        return self._models[key]
+
+    def __setitem__(self, key: str, value: FieldModel) -> None:
+        self._models[key] = value
+
+    def __len__(self) -> int:
+        return len(self._models)
+
+    def __iter__(self):
+        return iter(self._models.values())
+
+    def __contains__(self, item: str) -> bool:
+        return item in self._models.keys()
+
+    def save(self, filename: str) -> None:
+        with open(filename, 'w') as f:
+            json.dump(self._models, f, default=lambda o: o.__dict__, indent=4, sort_keys=True)
+
+    @classmethod
+    def load(cls, filename: str) -> "FieldModelCollection":
+        with open(filename, 'r') as f:
+            models = json.load(f)
+            obj = cls()
+            for fieldname, vals in models.items():
+                model = FieldModel(fieldname, vals["field_type"])
+                model.add_sample(vals["samples"])
+                model._update()
+                obj[fieldname] = model
+            return obj
+
+
+__all__: list[str] = ["FieldModel", "FieldModelCollection"]
