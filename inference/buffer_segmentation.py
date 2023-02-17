@@ -8,7 +8,7 @@ from array import array
 import numpy as np
 import numpy.typing as npt
 from collections.abc import MutableSequence
-from inference.statistical_models import FieldModelCollection
+from inference.statistical_models import BufferModel
 
 
 class MsgParts(Enum):
@@ -22,14 +22,15 @@ class MsgParts(Enum):
 class BufferStructure:
     """A buffer structure is characterized a set of messages which appear in hte buffer in hte same order """
 
-    def __init__(self, msgs: dict[int, int]):
+    def __init__(self, msgs: dict[int, int], byte_structure: Union[None, np.ndarray] = None) -> None:
         """
         :param msgs: a dict, keys are indices of start of frame within buffer, values are msg ids.
         """
         self.structure: dict[int, int] = msgs
         self.reception_count: int = 0
         self.received_buffers: list[bytes] = []
-        self.field_models: FieldModelCollection = FieldModelCollection()
+        self.field_models: BufferModel = BufferModel()
+        self.byte_structure: Union[None, np.ndarray] = byte_structure
 
     def __eq__(self, other: Any) -> bool:
         """We define equality of the structure itself, irrespective of self.received_buffers"""
@@ -67,7 +68,7 @@ class BufferStructure:
                 return False
         return True
 
-    def set_models(self, models: FieldModelCollection) -> None:
+    def set_models(self, models: BufferModel) -> None:
         self.field_models = models
 
 
@@ -195,10 +196,15 @@ class BufferSegmentation:
         if buffer_structure == {}:
             return {}
         fields = {}
+        buffer_description = []
         for k, v in buffer_structure.items():
             parsed_msg = meta.protocol_parser(
                 array("B", buffer[k:k + meta.msgs_payload_length[v] + meta.protocol_overhead]))
-            for idx, field in enumerate(parsed_msg.fieldnames):
-                fields[f'{parsed_msg.name}_{field}'] = eval(f'parsed_msg.{field}'), parsed_msg.fieldtypes[idx]
+            buffer_description.append(parsed_msg.get_header().pack())
+            for idx, field in enumerate(parsed_msg.ordered_fieldnames):
+                type_idx = parsed_msg.orders.index(idx)
+                fields[f'{parsed_msg.name}_{field}'] = eval(f'parsed_msg.{field}'), parsed_msg.fieldtypes[type_idx]
+                buffer_description.append((field, parsed_msg.fieldtypes[type_idx]))
+            buffer_description.append("crc")
 
-        return fields
+        return fields, buffer_description

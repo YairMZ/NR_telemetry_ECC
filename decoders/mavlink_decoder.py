@@ -4,9 +4,6 @@ from collections.abc import Sequence
 from ldpc.decoder import LogSpaDecoder
 from numpy.typing import NDArray
 import numpy as np
-from typing import Optional
-from utils.custom_exceptions import IncorrectBufferLength
-from utils.information_theory import prob, entropy
 from inference import BufferSegmentation, MsgParts
 from protocol_meta import dialect_meta as meta
 
@@ -19,7 +16,7 @@ class MavlinkRectifyingDecoder(Decoder):
     to assume too high bit flip probability even for "bad parts"
     """
     def __init__(self, ldpc_decoder: LogSpaDecoder, segmentation_iterations: int, ldpc_iterations: int, k: int,
-                 bad_p: float, good_p: float) -> None:
+                 bad_p: float, good_p: float, ) -> None:
         """
         :param ldpc_decoder: decoder object for BP decoding
         :param segmentation_iterations: number of times segmentation is done.

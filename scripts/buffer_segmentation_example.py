@@ -1,4 +1,4 @@
-from inference import BufferSegmentation, FieldModelCollection
+from inference import BufferSegmentation, BufferModel
 from protocol_meta import dialect_meta as meta
 
 
@@ -12,11 +12,12 @@ bad_buffer = good_buffer[:27] + bytes([1]) + good_buffer[28:]
 bs = BufferSegmentation(meta.protocol_parser)
 msg_parts, bit_validity, buffer_structure = bs.segment_buffer(bad_buffer)
 msg_parts, bit_validity, buffer_structure = bs.segment_buffer(good_buffer)
-msg_fields = bs.get_msg_fields(good_buffer)
-fields_collection = FieldModelCollection()
+msg_fields, buffer_description = bs.get_msg_fields(good_buffer)
+buffer_model = BufferModel()
 for fieldname, vals in msg_fields.items():
-    fields_collection.add_sample(fieldname, vals[0], vals[1])
-fields_collection.save('test_fields_collection.json')
+    buffer_model.add_sample(fieldname, vals[0], vals[1])
+buffer_model.set_buffer_description(buffer_description)
+buffer_model.save('test_fields_collection.json')
 
 # load from file
-fields_collection2 = FieldModelCollection.load('test_fields_collection.json')
+buffer_model2 = BufferModel.load('test_fields_collection.json')
