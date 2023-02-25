@@ -186,7 +186,7 @@ class BufferSegmentation:
         _, _, buffer_structure = self.segment_buffer(buffer)
         return BufferStructure(buffer_structure)
 
-    def get_msg_fields(self, buffer: bytes) -> dict[str, Any]:
+    def get_msg_fields(self, buffer: bytes) -> tuple[dict[str, tuple[Any, str]], list[tuple[str] | str | bytes]]:
         """The function returns a dictionary which holds the fields of a message in a buffer
 
         :param buffer: a buffer containing one or more MAVLink msgs
@@ -203,8 +203,9 @@ class BufferSegmentation:
             buffer_description.append(parsed_msg.get_header().pack())
             for idx, field in enumerate(parsed_msg.ordered_fieldnames):
                 type_idx = parsed_msg.orders.index(idx)
-                fields[f'{parsed_msg.name}_{field}'] = eval(f'parsed_msg.{field}'), parsed_msg.fieldtypes[type_idx]
-                buffer_description.append((field, parsed_msg.fieldtypes[type_idx]))
+                fields[f'{parsed_msg.name}_{field}'] = parsed_msg.format_attr(field), parsed_msg.fieldtypes[type_idx]
+                # format_attr returns is mavlink's field getter function
+                buffer_description.append((f'{parsed_msg.name}_{field}', parsed_msg.fieldtypes[type_idx]))
             buffer_description.append("crc")
 
         return fields, buffer_description

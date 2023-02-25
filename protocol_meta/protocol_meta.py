@@ -7,6 +7,10 @@ from collections.abc import MutableSequence
 STX = dialect.PROTOCOL_MARKER_V1
 field_lengths = {"uint32_t": 4, "float": 4, "uint16_t": 2, "uint8_t": 1, "int32_t": 4, "int16_t": 2, "int8_t": 1,
                  "uint64_t": 8, "char": 1, "int64_t": 8}  # field length in bytes
+format_strings = {"uint64_t": '<Q', "uint32_t": "<I", "uint16_t": '<H', "uint8_t": '<B',
+                      "int64_t": '<q', "int32_t": '<i', "int16_t": '<h', "int8_t": '<b',
+                      "char": '<c', "float": '<f'}
+inv_format_strings = {v[1]: k for k, v in format_strings.items()}
 msg_ids = list(dialect.mavlink_map.keys())
 header_length = dialect.HEADER_LEN_V1
 crc_length = 2
@@ -57,4 +61,4 @@ class MavlinkDialectMeta:
 
 mav_obj = dialect.MAVLink(1)
 dialect_meta = MavlinkDialectMeta(STX, header_length, crc_length, msg_ids, field_lengths, mav_obj.decode)
-__all__ = ["MAVError", "dialect_meta", "field_lengths"]
+__all__ = ["MAVError", "dialect_meta", "field_lengths","format_strings","inv_format_strings"]
