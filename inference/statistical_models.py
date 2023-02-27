@@ -125,6 +125,7 @@ class BufferModel:
         self._buffer_description = None
         self._field_models: dict[str, FieldModel] = {} if models is None else models
         self.window_size = window_size
+        self.model_size = 0
 
     def add_sample(self, field_name: str, sample, field_type: str = "") -> None:
         if field_name not in self._field_models.keys():
@@ -283,6 +284,7 @@ class BufferModel:
             buffer = bytes(buffer)  # convert to bytes
         elif not isinstance(buffer, bytes):
             raise ValueError("buffer must be either a numpy array of bits or bytes object")
+        self.model_size = self.model_size + 1 if self.model_size < self.window_size else self.window_size
         fields = tuple()
         ordered_field_names = []
         ordered_field_types = []

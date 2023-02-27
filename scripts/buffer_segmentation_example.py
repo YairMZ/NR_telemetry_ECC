@@ -73,3 +73,6 @@ damaged_fields = buffer_model.find_damaged_fields(error_indices, structure)
 for idx in range(len(p_bad)):
     if p_bad[idx][1] != p_good[idx][1]:
         print(f'{p_bad[idx][0]}: delta={(p_good[idx][1] - p_bad[idx][1])/p_good[idx][1]}')
+
+# prediction using bitwise return
+p_bitwise = buffer_model.predict(hc_bin_data[-1].tobytes(), structure)
