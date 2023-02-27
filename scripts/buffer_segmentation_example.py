@@ -40,11 +40,18 @@ with open('../runs/HC_eilat_July_2018/data/hc_to_ship.pickle', 'rb') as f:
     hc_bin_data = [Bits(auto=tx.get("bin")) for tx in hc_tx.get("20000")]
 bs = BufferSegmentation(meta.protocol_parser)
 buffer_model = BufferModel(window_size=window_size)
+
+# one way is to add a whole buffer to the buffer model given a structure
+parts, validity, structure = bs.segment_buffer(hc_bin_data[0].tobytes())  # segment first buffer to get structure
 for tx in hc_bin_data:
-    parts, validity, structure = bs.segment_buffer(tx.tobytes())
-    msg_fields, buffer_description = bs.get_msg_fields(tx.tobytes())
-    for field_name, vals in msg_fields.items():
-        buffer_model.add_sample(field_name, vals[0], vals[1])
+    buffer_model.add_buffer(tx.tobytes(), structure)
+
+# another way is to segment first and then add samples to each field model
+# for tx in hc_bin_data:
+#     parts, validity, structure = bs.segment_buffer(tx.tobytes())
+#     msg_fields, buffer_description = bs.get_msg_fields(tx.tobytes())
+#     for field_name, vals in msg_fields.items():
+#         buffer_model.add_sample(field_name, vals[0], vals[1])
 
 # make prediction regarding good buffer
 p_good = buffer_model.predict(np.array(hc_bin_data[-1], dtype=np.uint8), structure, False)

@@ -114,6 +114,10 @@ class FieldModel:
     def __str__(self) -> str:
         return f"{self.name} ({self.field_type}): {self.mean} +- {self.std}"
 
+    @property
+    def model_size(self) -> int:
+        return len(self.samples)
+
 
 class BufferModel:
     def __init__(self, models: dict[str, FieldModel] = None, window_size: int | None = None):
@@ -160,7 +164,7 @@ class BufferModel:
     def get_field_model(self, field_name: str) -> FieldModel:
         return self._field_models.get(field_name)
 
-    def predict(self, buffer: bytes| NDArray[np.float_], buffer_structure: dict, bitwise: bool = True) -> \
+    def predict(self, buffer: bytes| NDArray[np.int_], buffer_structure: dict[int, int], bitwise: bool = True) -> \
             list[tuple[str, float]]| NDArray[np.float_]:
         """predicts the probability of bits originating from a valid (not an outlier) field
         :param buffer: the buffer to predict
@@ -265,6 +269,33 @@ class BufferModel:
                 start_bit = last_bit
                 field_idx += 1
         return damaged_fields
+
+    def add_buffer(self, buffer: bytes| NDArray[np.int_], structure: dict[int, int]) -> None:
+        """add observations to the model
+        :param buffer: the buffer to add
+        :param structure: a dictionary mapping the byte index in the buffer to the relevant mavlink message id
+        """
+        if isinstance(buffer, ndarray):  # if buffer is a numpy array, convert to bytes
+            buffer = [
+                int(''.join(map(str, buffer[i: i + 8])), 2)
+                for i in range(0, len(buffer), 8)
+            ]
+            buffer = bytes(buffer)  # convert to bytes
+        elif not isinstance(buffer, bytes):
+            raise ValueError("buffer must be either a numpy array of bits or bytes object")
+        fields = tuple()
+        ordered_field_names = []
+        ordered_field_types = []
+        for byte_idx, msg_id in structure.items():
+            fields += mavlink_map[msg_id].unpacker.unpack(
+                buffer[byte_idx + dialect_meta.header_len:
+                       byte_idx + dialect_meta.header_len + dialect_meta.msgs_payload_length[msg_id]])
+            ordered_field_names += [f'{mavlink_map[msg_id].name}_{name}' for name in mavlink_map[msg_id].ordered_fieldnames]
+            for name in mavlink_map[msg_id].ordered_fieldnames:
+                type_idx = mavlink_map[msg_id].fieldnames.index(name)
+                ordered_field_types.append(mavlink_map[msg_id].fieldtypes[type_idx])
+        for field_name, value, field_type in zip(ordered_field_names, fields, ordered_field_types):
+            self.add_sample(field_name, value, field_type)
 
 
 __all__: list[str] = ["FieldModel", "BufferModel", "num2bits"]
