@@ -284,7 +284,7 @@ class BufferModel:
             buffer = bytes(buffer)  # convert to bytes
         elif not isinstance(buffer, bytes):
             raise ValueError("buffer must be either a numpy array of bits or bytes object")
-        self.model_size = self.model_size + 1 if self.model_size < self.window_size else self.window_size
+        self.model_size = self.model_size + 1 if ((self.window_size is None) or (self.model_size < self.window_size)) else self.window_size
         fields = tuple()
         ordered_field_names = []
         ordered_field_types = []
