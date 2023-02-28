@@ -1,8 +1,4 @@
 """Mavlink Rectifying decoder"""
-from typing import Tuple, Any
-
-from numpy import ndarray, dtype, long, float_
-
 from decoders import Decoder, DecoderType
 from collections.abc import Sequence
 from ldpc.decoder import LogSpaDecoder
@@ -66,7 +62,7 @@ class MavlinkRectifyingDecoder(Decoder):
         self.conf_slope = conf_slope
         super().__init__(DecoderType.MAVLINK)
 
-    def decode_buffer(self, channel_llr: Sequence[np.float_]) -> tuple[NDArray[np.int_], NDArray[np.float_], bool, int, NDArray[np.int_], ndarray[np.int_], int]:
+    def decode_buffer(self, channel_llr: Sequence[np.float_]) -> tuple[NDArray[np.int_], NDArray[np.float_], bool, int, NDArray[np.int_], NDArray[np.int_], int]:
         """decodes a buffer
 
         :param channel_llr: bits to decode
@@ -93,7 +89,7 @@ class MavlinkRectifyingDecoder(Decoder):
         rectified_llr = self.rectify(channel_input, label)
         return self.decode_and_update_model(rectified_llr, label, channel_bits)
 
-    def decode_and_update_model(self, llr, label, channel_bits) -> tuple[NDArray[np.int_], NDArray[np.float_], bool, int, NDArray[np.int_], ndarray[np.int_], int]:
+    def decode_and_update_model(self, llr, label, channel_bits) -> tuple[NDArray[np.int_], NDArray[np.float_], bool, int, NDArray[np.int_], NDArray[np.int_], int]:
         estimate, llr, decode_success, iterations, syndrome, vnode_validity = self.ldpc_decoder.decode(llr)
         if self.learning:
             if decode_success:  # buffer fully recovered
@@ -123,9 +119,9 @@ class MavlinkRectifyingDecoder(Decoder):
         :param cluster_id: cluster to use for rectification
         :return: rectified observation
         """
-        if self.buffer_structures[cluster_id] is None:
+        if self.buffer_structures[cluster_id] is not None:
             # non mavlink bits are nan
-            valid_bits_p = self.model.predict(observation, self.buffer_structures[cluster_id])
+            valid_bits_p = self.model.predict(np.array(observation < 0, dtype=np.int_), self.buffer_structures[cluster_id])
             good_bits = valid_bits_p > 1 - self.threshold
             bad_bits = valid_bits_p < self.threshold
             if self.learning:  # if model is being learned, need to add a confidence factor to the rectification
