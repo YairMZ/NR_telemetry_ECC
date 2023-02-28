@@ -216,10 +216,11 @@ class BufferModel:
         else:
             valid_probability = [None] * len(fields)
         for field_idx, field_name, value in zip(range(len(fields)), ordered_field_names, fields):
-            if bitwise:
-                valid_probability[bit_2_val_idx == field_idx] = self._field_models[field_name].classify_value(value)
-            else:
-                valid_probability[field_idx] = (field_name, self._field_models[field_name].classify_value(value))
+            if field_name in self._field_models.keys():
+                if bitwise:
+                    valid_probability[bit_2_val_idx == field_idx] = self._field_models[field_name].classify_value(value)
+                else:
+                    valid_probability[field_idx] = (field_name, self._field_models[field_name].classify_value(value))
         return valid_probability
         # TODO: implement
 
@@ -244,11 +245,11 @@ class BufferModel:
                 model.add_sample(vals["samples"])
                 model._update()
                 obj[field_name] = model
-            # encode bytes objects
-            for i, val in enumerate(buffer_description):
-                if isinstance(val, str) and val != 'crc':
-                    buffer_description[i] = bytes.fromhex(val)
-            obj.set_buffer_description(buffer_description)
+            if buffer_description is not None:
+                for i, val in enumerate(buffer_description):
+                    if isinstance(val, str) and val != 'crc':
+                        buffer_description[i] = bytes.fromhex(val)
+                obj.set_buffer_description(buffer_description)
             obj.window_size = window_size
             return obj
 

@@ -119,25 +119,25 @@ class MavlinkRectifyingDecoder(Decoder):
         :param cluster_id: cluster to use for rectification
         :return: rectified observation
         """
-        if self.buffer_structures[cluster_id] is not None:
-            # non mavlink bits are nan
-            valid_bits_p = self.model.predict(np.array(observation < 0, dtype=np.int_), self.buffer_structures[cluster_id])
-            good_bits = valid_bits_p > 1 - self.threshold
-            bad_bits = valid_bits_p < self.threshold
-            if self.learning:  # if model is being learned, need to add a confidence factor to the rectification
-                def model_confidence(model_size: int, center: int, slope: float) -> np.float_:
-                    return 0 if model_size <= 1 else 1 / (1 + np.exp(-(model_size - center) * slope, dtype=np.float_))
-                confidence = model_confidence(self.model.model_size, self.conf_center, self.conf_slope)
-                valid_factor = (self.valid_factor - 1)*confidence + 1
-                invalid_factor = (self.invalid_factor - 1)*confidence + 1
-            else:
-                valid_factor = self.valid_factor
-                invalid_factor = self.invalid_factor
-            rectified_llr = observation.copy()
-            rectified_llr[good_bits] *= valid_factor
-            rectified_llr[bad_bits] *= invalid_factor
-            return rectified_llr
-        return observation
+        if self.buffer_structures[cluster_id] is None:
+            return observation
+        # non mavlink bits are nan
+        valid_bits_p = self.model.predict(np.array(observation < 0, dtype=np.int_), self.buffer_structures[cluster_id])
+        good_bits = valid_bits_p > 1 - self.threshold
+        bad_bits = valid_bits_p < self.threshold
+        if self.learning:  # if model is being learned, need to add a confidence factor to the rectification
+            def model_confidence(model_size: int, center: int, slope: float) -> np.float_:
+                return 0 if model_size <= 1 else 1 / (1 + np.exp(-(model_size - center) * slope, dtype=np.float_))
+            confidence = model_confidence(self.model.model_size, self.conf_center, self.conf_slope)
+            valid_factor = (self.valid_factor - 1)*confidence + 1
+            invalid_factor = (self.invalid_factor - 1)*confidence + 1
+        else:
+            valid_factor = self.valid_factor
+            invalid_factor = self.invalid_factor
+        rectified_llr = observation.copy()
+        rectified_llr[good_bits] *= valid_factor
+        rectified_llr[bad_bits] *= invalid_factor
+        return rectified_llr
 
 # decode_success = False
         # iterations_to_convergence = 0

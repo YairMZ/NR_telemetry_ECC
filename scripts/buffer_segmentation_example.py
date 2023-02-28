@@ -34,7 +34,7 @@ prediction = buffer_model2.predict(good_buffer, buffer_structure)
 prediction = buffer_model2.predict(bad_buffer, buffer_structure, False)
 
 # train models
-window_size = 100
+window_size = None
 with open('../runs/HC_eilat_July_2018/data/hc_to_ship.pickle', 'rb') as f:
     hc_tx = pickle.load(f)
     hc_bin_data = [Bits(auto=tx.get("bin")) for tx in hc_tx.get("20000")]
@@ -67,7 +67,10 @@ bit_arr = np.array(corrupt_tx, dtype=np.uint8)
 # make prediction regarding corrupt buffer
 p_bad = buffer_model.predict(bit_arr, structure, False)
 # save model
-buffer_model.save(f'model_2018_window_size_{window_size}.json')
+if window_size is None:
+    buffer_model.save('model_2018_all.json')
+else:
+    buffer_model.save(f'model_2018_window_size_{window_size}.json')
 # # find damaged fields based on error indices
 damaged_fields = buffer_model.find_damaged_fields(error_indices, structure)
 for idx in range(len(p_bad)):
