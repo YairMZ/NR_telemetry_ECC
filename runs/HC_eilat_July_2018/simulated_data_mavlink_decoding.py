@@ -195,7 +195,7 @@ def simulation_step(p: float) -> dict[str, Any]:
 
     timestamp = f'{str(datetime.date.today())}_{str(datetime.datetime.now().hour)}_{str(datetime.datetime.now().minute)}_' \
                 f'{str(datetime.datetime.now().second)}'
-    with open(f'{timestamp}_{p}_simulation_classifying_rect.pickle', 'wb') as f:
+    with open(f'results/{timestamp}_{p}_simulation_classifying_rect.pickle', 'wb') as f:
         pickle.dump(step_results, f)
     return step_results
 
