@@ -248,9 +248,9 @@ if __name__ == '__main__':
         f.write(cmd)
     logger.info(cmd)
 
-    # with Pool(processes=processes) as pool:
-    #     results: list[dict[str, Any]] = pool.map(simulation_step, bit_flip_p)
-    results: list[dict[str, Any]] = list(map(simulation_step, bit_flip_p))
+    with Pool(processes=processes) as pool:
+        results: list[dict[str, Any]] = pool.map(simulation_step, bit_flip_p)
+    # results: list[dict[str, Any]] = list(map(simulation_step, bit_flip_p))
 
     try:
         with lzma.open(
