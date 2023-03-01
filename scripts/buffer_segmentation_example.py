@@ -72,7 +72,8 @@ if window_size is None:
 else:
     buffer_model.save(f'model_2018_window_size_{window_size}.json')
 # # find damaged fields based on error indices
-damaged_fields = buffer_model.find_damaged_fields(error_indices, structure)
+damaged_fields = buffer_model.find_damaged_fields(error_indices, structure, len(hc_bin_data[-1].tobytes()))
+print(f"error indices: {error_indices}")
 for idx in range(len(p_bad)):
     if p_bad[idx][1] != p_good[idx][1]:
         print(f'{p_bad[idx][0]}: delta={(p_good[idx][1] - p_bad[idx][1])/p_good[idx][1]}')
