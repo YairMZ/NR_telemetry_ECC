@@ -26,7 +26,7 @@ parser.add_argument("--nflips", default=20, help="number of bit flips to conside
 parser.add_argument("--multiply_data", default=0, help="multiplies amount of buffers by 2 to power of arg", type=int)
 parser.add_argument("--processes", default=0, help="number of processes to spawn", type=int)
 parser.add_argument("--msg_delay", default="20000", help="sampling delay", type=str)
-parser.add_argument("--threshold", default=0.01,
+parser.add_argument("--threshold", default=0,
                     help="threshold  as outlier probability for classifying a field as valid or invalid", type=float)
 parser.add_argument("--window_len", default=50,
                     help="number of previous samples to use for training the model, if 0 all are used", type=int)
@@ -162,11 +162,11 @@ def simulation_step(p: float) -> dict[str, Any]:
 
         good_fields[tx_idx]: list[int] = []
         for idx, vfp in enumerate(valid_field_p):
-            if vfp[1] > 1 - args.threshold:
+            if vfp[1] >= 1 - args.threshold:
                 good_fields[tx_idx].append(idx)
         bad_fields[tx_idx]: list[int] = []
         for idx, vfp in enumerate(valid_field_p):
-            if vfp[1] < args.threshold:
+            if vfp[1] <= args.threshold:
                 bad_fields[tx_idx].append(idx)
 
         # look for constant bits for forcing
@@ -178,13 +178,12 @@ def simulation_step(p: float) -> dict[str, Any]:
             for idx in forced_bits[tx_idx]:
                 if idx not in errors[tx_idx]:
                     erroneously_flipped_bits[tx_idx] += 1
-        l = []
-        for idx, vfp in enumerate(valid_field_p):
-            if vfp[1] <= 0:
-              l.append(idx)
+        l = [idx for idx, vfp in enumerate(valid_field_p) if vfp[1] <= 0]
         forced_fields[tx_idx] = np.array(l, dtype=np.int_)
         damaged = data_model.find_damaged_fields(errors[tx_idx], buffer_structures[running_idx], len(corrupted) // 8)
-        damaged_fields[tx_idx] = np.array(tuple(set(field[1] for field in damaged)), dtype=np.int_)
+        damaged_fields[tx_idx] = np.array(
+            tuple({field[1] for field in damaged}), dtype=np.int_
+        )
         good_fields_true = 0
         good_fields_false = 0
         bad_fields_true = 0
@@ -298,9 +297,9 @@ if __name__ == '__main__':
     # results: list[dict[str, Any]] = list(map(simulation_step, bit_flip_p))
 
     try:
-        with open(os.path.join(path, f'{timestamp}_classifier_analysis_2018.pickle'), "wb") as f:
-            pickle.dump(results, f)
-        logger.info("saved pickle results file")
+        # with open(os.path.join(path, f'{timestamp}_classifier_analysis_2018.pickle'), "wb") as f:
+        #     pickle.dump(results, f)
+        # logger.info("saved pickle results file")
 
         good_fields_performance = np.array([p['good_fields_performance'].sum(axis=0) for p in results])
         bad_fields_performance = np.array([p['bad_fields_performance'].sum(axis=0) for p in results])
@@ -321,8 +320,8 @@ if __name__ == '__main__':
         # logger.info("saved figures")
         summary = {"args": args, "good_fields_performance": good_fields_performance,
                    "bad_fields_performance": bad_fields_performance}
-        with open(os.path.join(path, f'{timestamp}_summary_classifier_analysis_2018.pickle'), 'wb') as f:
-            pickle.dump(summary, f)
+        # with open(os.path.join(path, f'{timestamp}_summary_classifier_analysis_2018.pickle'), 'wb') as f:
+        #     pickle.dump(summary, f)
         savemat(os.path.join(path, f'{timestamp}_summary_classifier_analysis_2018.mat'), summary)
         logger.info("saved summary")
 
@@ -332,9 +331,9 @@ if __name__ == '__main__':
 
         summary["results"] = results
         # summary = {"results": results}
-        savemat(os.path.join(path, f'{timestamp}_classifier_analysis_2018.mat'),
-                summary, do_compression=True)
-        logger.info("saved results to mat file")
+        # savemat(os.path.join(path, f'{timestamp}_classifier_analysis_2018.mat'),
+        #         summary, do_compression=True)
+        # logger.info("saved results to mat file")
         shutil.move("results/log.log", os.path.join(path, "log.log"))
     except Exception as e:
         logger.exception(e)

@@ -20,14 +20,15 @@ class MavlinkRectifyingDecoder(Decoder):
     to assume too high bit flip probability even for "bad parts"
     """
 
-    def __init__(self, ldpc_decoder: LogSpaDecoder, model_length: int, threshold: float, n_clusters: int,
+    def __init__(self, ldpc_decoder: LogSpaDecoder, model_length: int, valid_thr: float, invalid_thr: float, n_clusters: int,
                  valid_factor: float, invalid_factor: float, classifier_training_size: int | None = None,
                  cluster: bool = True, window_length: int | None = None, data_model: BufferModel | None = None,
                  conf_center: float = 0, conf_slope: float = 0) -> None:
         """
         :param ldpc_decoder: decoder for ldpc code used
         :param model_length: length of assumed model in bits, first info bits are assumed to be model bits
-        :param threshold: threshold for classifying a field as valid or invalid
+        :param valid_thr: valid_threshold for classifying a field as valid
+        :param invalid_thr: invalid_threshold for classifying a field as invalid
         :param classifier_training_size: number of buffers to use for training the classifier
         :param n_clusters: number of clusters to use for clustering
         :param valid_factor: factor to multiply llr of valid bits, must be > 1
@@ -38,10 +39,11 @@ class MavlinkRectifyingDecoder(Decoder):
         :param conf_center: center of model confidence sigmoid
         :param conf_slope: slope of model confidence sigmoid
         """
+        self.invalid_thr = invalid_thr
         self.buffer_structures: Sequence[dict[int, int]] = [None] * n_clusters
         self.ldpc_decoder = ldpc_decoder
         self.model_length = model_length
-        self.threshold = threshold
+        self.valid_threshold = valid_thr
         self.window_length = window_length
         self.bs = BufferSegmentation(meta.protocol_parser)
         self.model: BufferModel = data_model if data_model is not None else BufferModel(window_size=window_length)
@@ -157,15 +159,15 @@ class MavlinkRectifyingDecoder(Decoder):
         # non mavlink bits are nan
         valid_field_p, valid_bits_p = self.model.predict(np.array(observation < 0, dtype=np.int_),
                                                          self.buffer_structures[cluster_id])
-        good_bits: NDArray[np.bool_] = valid_bits_p > 1 - self.threshold
-        bad_bits: NDArray[np.bool_] = valid_bits_p < self.threshold
+        good_bits: NDArray[np.bool_] = valid_bits_p > 1 - self.valid_threshold
+        bad_bits: NDArray[np.bool_] = valid_bits_p < self.invalid_thr
         good_fields: list[int] = []
         for idx, vfp in enumerate(valid_field_p):
-            if vfp[1] > 1 - self.threshold:
+            if vfp[1] > 1 - self.valid_threshold:
                 good_fields.append(idx)
         bad_fields: list[int] = []
         for idx, vfp in enumerate(valid_field_p):
-            if vfp[1] < self.threshold:
+            if vfp[1] < self.invalid_thr:
                 bad_fields.append(idx)
         if self.learning:  # if model is being learned, need to add a confidence factor to the rectification
             def model_confidence(model_size: int, center: float, slope: float) -> np.float_:

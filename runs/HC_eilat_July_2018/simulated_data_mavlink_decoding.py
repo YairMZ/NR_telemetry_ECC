@@ -36,8 +36,10 @@ parser.add_argument("--msg_delay", default="50000", help="sampling delay", type=
 parser.add_argument("--cluster", default=1, help="enable or disable clustering", type=int)
 parser.add_argument("--valid_factor", default=1.1, help="valid factor", type=float)
 parser.add_argument("--invalid_factor", default=0.9, help="invalid factor", type=float)
-parser.add_argument("--threshold", default=0.01,
-                    help="threshold  as outlier probability for classifying a field as valid or invalid", type=float)
+parser.add_argument("--valid_threshold", default=0.03,
+                    help="valid_threshold  as outlier probability for classifying a field as valid", type=float)
+parser.add_argument("--invalid_threshold", default=0.08,
+                    help="invalid_threshold  as outlier probability for classifying a field as invalid", type=float)
 parser.add_argument("--window_len", default=50,
                     help="number of previous samples to use for training the model, if 0 all are used", type=int)
 parser.add_argument("--learn", default=0, help="0 predefined model is used. 1 model is learned online", type=int)
@@ -136,7 +138,8 @@ def simulation_step(p: float) -> dict[str, Any]:
     channel = bsc_llr(p=p)
     ldpc_decoder = DecoderWiFi(spec=spec, max_iter=ldpc_iterations, decoder_type=args.dec_type)
     rectify_decoder = MavlinkRectifyingDecoder(DecoderWiFi(spec=spec, max_iter=ldpc_iterations, decoder_type=args.dec_type),
-                                               model_length, args.threshold, args.n_clusters, args.valid_factor,
+                                               model_length, args.valid_threshold, args.invalid_threshold, args.n_clusters,
+                                               args.valid_factor,
                                                args.invalid_factor, args.classifier_train, bool(args.cluster), window_len,
                                                data_model, args.conf_center, args.conf_slope)
     if not bool(args.cluster):
@@ -180,7 +183,8 @@ def simulation_step(p: float) -> dict[str, Any]:
     # decoding
     decoded_rect_df = pd.DataFrame(decoded_rect,
                                    columns=["estimate", "llr", "decode_success", "iterations", "syndrome", "vnode_validity",
-                                            "cluster_label", "good_bits", "bad_bits", "segmented_bits", "hamming"])
+                                            "cluster_label", "good_bits", "bad_bits", "segmented_bits", "good_field_idx",
+                                            "bad_field_idx", "damaged_fields", "hamming"])
     step_results["decoded_rect"] = decoded_rect_df
     decoded_ldpc_df = pd.DataFrame(decoded_ldpc,
                                    columns=["estimate", "llr", "decode_success", "iterations", "syndrome",
@@ -219,7 +223,8 @@ if __name__ == '__main__':
     logger.info(f"classifier_train: {args.classifier_train}")
     logger.info(f"n_clusters: {args.n_clusters}")
     logger.info(f"cluster: {args.cluster}")
-    logger.info(f"threshold used in decoder: {args.threshold}")
+    logger.info(f"valid_threshold used in decoder: {args.valid_threshold}")
+    logger.info(f"invalid_threshold used in decoder: {args.invalid_threshold}")
     logger.info(f"valid_factor: {args.valid_factor}")
     logger.info(f"invalid_factor: {args.invalid_factor}")
     logger.info(f"decoder window length: {window_len}")
@@ -231,7 +236,8 @@ if __name__ == '__main__':
     cmd = f'python {__file__} --minflip {args.minflip} --maxflip {args.maxflip} --nflips {args.nflips}  ' \
           f'--ldpciterations {ldpc_iterations} --segiterations {args.segiterations} --multiply_data {args.multiply_data} ' \
           f'--msg_delay {args.msg_delay} --dec_type {args.dec_type} --classifier_train {args.classifier_train} ' \
-          f'--n_clusters {args.n_clusters} --cluster {args.cluster} --threshold {args.threshold} ' \
+          f'--n_clusters {args.n_clusters} --cluster {args.cluster} --valid_threshold {args.valid_threshold} ' \
+          f'--invalid_threshold {args.invalid_threshold}' \
           f'--valid_factor {args.valid_factor} --invalid_factor {args.invalid_factor} --conf_center {args.conf_center} ' \
           f'--conf_slope {args.conf_slope} --learn {args.learn}'
     if args.N > 0:
@@ -247,9 +253,9 @@ if __name__ == '__main__':
         f.write(cmd)
     logger.info(cmd)
 
-    # with Pool(processes=processes) as pool:
-    #     results: list[dict[str, Any]] = pool.map(simulation_step, bit_flip_p)
-    results: list[dict[str, Any]] = list(map(simulation_step, bit_flip_p))
+    with Pool(processes=processes) as pool:
+        results: list[dict[str, Any]] = pool.map(simulation_step, bit_flip_p)
+    # results: list[dict[str, Any]] = list(map(simulation_step, bit_flip_p))
 
     try:
         with lzma.open(
