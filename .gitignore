@@ -132,3 +132,5 @@ dmypy.json
 /runs/Feb_2022/data/ship_logs/
 *.mat
 /runs/Feb_2022/results/
+scripts/results
+*.csv

@@ -11,7 +11,16 @@ from collections.abc import Sequence
 import struct
 
 
-def num2bits(num, field_type: str) -> NDArray[np.float_]:
+def num2bits(num, field_type: str) -> NDArray[np.uint8]:
+    # cast first
+    if field_type == "char":
+        num = ord(num)
+    elif "uint" in field_type:
+        num = int(round(num)) if num >= 0 else 0
+    elif "int" in field_type:
+        num = int(round(num))
+    elif field_type != "float":
+        raise ValueError(f"field_type {field_type} is not supported")
     fmt = format_strings[field_type]
     to_bytes = struct.pack(fmt, num)
     return np.unpackbits(np.frombuffer(to_bytes, dtype=np.uint8))
@@ -119,6 +128,11 @@ class FieldModel:
     def model_size(self) -> int:
         return len(self.samples)
 
+    def bitwise_mean(self) -> NDArray[np.uint8]:
+        if not self._up2date:
+            self._update()
+        return num2bits(self._mean, self.field_type)
+
 
 class BufferModel:
     def __init__(self, models: dict[str, FieldModel] = None, window_size: int | None = None):
@@ -166,36 +180,32 @@ class BufferModel:
     def get_field_model(self, field_name: str) -> FieldModel:
         return self._field_models.get(field_name)
 
-    def predict(self, buffer: bytes | NDArray[np.int_], buffer_structure: dict[int, int], bitwise: bool = True) -> \
-            list[tuple[str, float]] | NDArray[np.float_]:
+    def predict(self, buffer: bytes | NDArray[np.int_], buffer_structure: dict[int, int]) -> \
+            tuple[list[tuple[str, float]], NDArray[np.float_]]:
         """predicts the probability of bits originating from a valid (not an outlier) field
         :param buffer: the buffer to predict
         :param buffer_structure: a dictionary mapping the byte index in the buffer to the relevant mavlink message id
-        :param bitwise: if True, the probability of each bit is calculated, otherwise the probability of the whole field
         :return: probabilities of fields being valid (not an outlier). If bitwise is True, and array probabilities are for each
         bit within the field, otherwise a list of tuples with filed name and valid probability.
         """
         if isinstance(buffer, bytes):
             length = len(buffer)
         elif isinstance(buffer, np.ndarray):
-            length = buffer.size * 8
+            length = buffer.size // 8
         else:
             raise ValueError("buffer must be either bytes or numpy array")
-        bit_2_val_idx, ordered_field_names, _ = self.unpack_structure(bitwise, length, buffer_structure)
+        bit_2_val_idx, ordered_field_names, _ = self.unpack_structure(True, length, buffer_structure)
         fields = self.unpack_values(buffer, buffer_structure)
 
         # calculate the valid probability of each field
-        if bitwise:
-            valid_probability = np.array([None] * len(bit_2_val_idx)).astype(np.float_)
-        else:
-            valid_probability = [None] * len(fields)
+        valid_bits_probability = np.array([None] * len(bit_2_val_idx)).astype(np.float_)
+        valid_field_probability: list[tuple[str, float]] = [None] * len(fields)
         for field_idx, field_name, value in zip(range(len(fields)), ordered_field_names, fields):
             if field_name in self._field_models.keys():
-                if bitwise:
-                    valid_probability[bit_2_val_idx == field_idx] = self._field_models[field_name].classify_value(value)
-                else:
-                    valid_probability[field_idx] = (field_name, self._field_models[field_name].classify_value(value))
-        return valid_probability
+                val = self._field_models[field_name].classify_value(value)
+                valid_bits_probability[bit_2_val_idx == field_idx] = val
+                valid_field_probability[field_idx] = (field_name, val)
+        return valid_field_probability, valid_bits_probability
 
     @staticmethod
     def unpack_values(buffer: bytes | NDArray[np.int_], buffer_structure: dict[int, int]) -> tuple:
@@ -224,7 +234,7 @@ class BufferModel:
 
     @staticmethod
     def unpack_structure(bitwise: bool, buffer_len: int, buffer_structure: dict[int, int]) -> \
-            tuple[ndarray, list[Any], list[Any]]:
+            tuple[NDArray[np.int_], list[Any], list[Any]]:
         """unpacks the buffer structure into a list of ordered field names and types.
 
             :param bitwise: if True, the first returned value is a numpy array mapping each bit to the relevant field index.
@@ -302,7 +312,8 @@ class BufferModel:
             obj.window_size = window_size
             return obj
 
-    def find_damaged_fields(self, error_indices: ndarray, structure: dict[int, int], buffer_len: int):
+    def find_damaged_fields(self, error_indices: NDArray[np.int_], structure: dict[int, int], buffer_len: int) -> \
+            list[tuple[str, int]]:
         """finds the damaged fields in a buffer based on the error indices. Use for debugging / analysis purposes only.
 
         :param error_indices: a numpy array of error indices.
@@ -317,7 +328,7 @@ class BufferModel:
                 ordered_field_names[bit_2_val_idx[error]],
                 field_idx[ordered_field_names[bit_2_val_idx[error]]],
             )
-            for error in error_indices
+            for error in np.sort(error_indices)
             if bit_2_val_idx[error] >= 0
         ]
 
@@ -329,7 +340,7 @@ class BufferModel:
         if isinstance(buffer, bytes):
             length = len(buffer)
         elif isinstance(buffer, np.ndarray):
-            length = buffer.size * 8
+            length = buffer.size // 8
         else:
             raise ValueError("buffer must be either bytes or numpy array")
 
@@ -340,6 +351,22 @@ class BufferModel:
                                                   ) else self.window_size
         for field_name, value, field_type in zip(ordered_field_names, fields, ordered_field_types):
             self.add_sample(field_name, value, field_type)
+
+    def bitwise_model_mean(self, bits_idx: NDArray[np.int_], buffer_len: int, buffer_structure: dict[int, int]) -> \
+            NDArray[np.uint8]:
+        """returns the mean of the buffer model for the given bits indices
+        :param bits_idx: the bits indices to calculate the mean for
+        :param buffer_len: the length of the buffer in bytes
+        :param buffer_structure: a dictionary mapping the byte index in the buffer to the relevant mavlink message id
+        :return: a numpy array of the mean values in binary representation for the given bits indices
+        """
+        bit_2_val_idx, ordered_field_names, ordered_field_types = self.unpack_structure(True, buffer_len, buffer_structure)
+        # reconstruct the mean values from the field models in the same order as the bits indices
+        mean_values = np.zeros(buffer_len*8, dtype=np.uint8)
+        for field_idx, field_name, field_type in zip(range(len(ordered_field_names)),
+                                                     ordered_field_names, ordered_field_types):
+            mean_values[bit_2_val_idx == field_idx] = num2bits(self._field_models[field_name].mean, field_type)
+        return mean_values[bits_idx]
 
 
 __all__: list[str] = ["FieldModel", "BufferModel", "num2bits"]

@@ -88,7 +88,7 @@ for _ in range(args.multiply_data):  # generate more buffers for statistical rep
     encoded.extend(encoded)
 n = len(encoded)
 
-if bool(args.learn):
+if not bool(args.cluster):
     data_model = None
     bs = BufferSegmentation(meta.protocol_parser)
     if args.n_clusters == 1:
@@ -108,9 +108,8 @@ if bool(args.learn):
         buffer_structures.append(buffer_structure)
     else:
         raise ValueError("n_clusters must be 1, 2 or 3")
-else:
+if not bool(args.learn):
     data_model = BufferModel.load('data/model_2018_all.json')
-    buffer_structures = None
 
 model_length = encoder.k
 # encoded structure: {starting byte index in buffer: msg_id}
@@ -140,7 +139,7 @@ def simulation_step(p: float) -> dict[str, Any]:
                                                model_length, args.threshold, args.n_clusters, args.valid_factor,
                                                args.invalid_factor, args.classifier_train, bool(args.cluster), window_len,
                                                data_model, args.conf_center, args.conf_slope)
-    if bool(args.learn):
+    if not bool(args.cluster):
         rectify_decoder.set_buffer_structures(buffer_structures)
     no_errors = int(encoder.n * p)
     rx = []
@@ -158,7 +157,7 @@ def simulation_step(p: float) -> dict[str, Any]:
         channel_llr = channel(np.array(corrupted, dtype=np.int_))
         d = ldpc_decoder.decode(channel_llr)
         decoded_ldpc.append((*d, hamming_distance(d[0], encoded[tx_idx])))
-        d = rectify_decoder.decode_buffer(channel_llr)
+        d = rectify_decoder.decode_buffer(channel_llr, errors[tx_idx])
         decoded_rect.append((*d, hamming_distance(d[0], encoded[tx_idx])))
         logger.info(f"p= {p}, tx id: {tx_idx}")
     logger.info(f"successful pure decoding for bit flip p= {p}, is: {sum(int(r[-1] == 0) for r in decoded_ldpc)}/{n}")
@@ -180,8 +179,8 @@ def simulation_step(p: float) -> dict[str, Any]:
 
     # decoding
     decoded_rect_df = pd.DataFrame(decoded_rect,
-                                   columns=["estimate", "llr", "decode_success", "iterations", "syndrome",
-                                            "vnode_validity", "cluster_label", "hamming"])
+                                   columns=["estimate", "llr", "decode_success", "iterations", "syndrome", "vnode_validity",
+                                            "cluster_label", "good_bits", "bad_bits", "segmented_bits", "hamming"])
     step_results["decoded_rect"] = decoded_rect_df
     decoded_ldpc_df = pd.DataFrame(decoded_ldpc,
                                    columns=["estimate", "llr", "decode_success", "iterations", "syndrome",
@@ -248,9 +247,9 @@ if __name__ == '__main__':
         f.write(cmd)
     logger.info(cmd)
 
-    with Pool(processes=processes) as pool:
-        results: list[dict[str, Any]] = pool.map(simulation_step, bit_flip_p)
-    # results: list[dict[str, Any]] = list(map(simulation_step, bit_flip_p))
+    # with Pool(processes=processes) as pool:
+    #     results: list[dict[str, Any]] = pool.map(simulation_step, bit_flip_p)
+    results: list[dict[str, Any]] = list(map(simulation_step, bit_flip_p))
 
     try:
         with lzma.open(
