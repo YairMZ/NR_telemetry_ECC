@@ -86,14 +86,14 @@ class FieldModel:
             self._update()
         return norm.cdf(x, self._mean, self._std)
 
-    def classify_value(self, value: float) -> float:
+    def classify_value(self, value: float) -> tuple[float, float]:
         """returns the probability that the value is not an outlier assuming a gaussian model"""
         if not self._up2date:
             self._update()
         if self._std <= 0:
-            return 1 if value == self._mean else 0
+            return (1, 0) if value == self._mean else (0, 0)
         normalized_distance = abs(self._mean - value) / self._std  # as number of standard deviations
-        return 1 - erf(normalized_distance / np.sqrt(2))  # the probability that the value is not an outlier
+        return 1 - erf(normalized_distance / np.sqrt(2)), self._std  # the probability that the value is not an outlier
 
     def p_of_sign_bit(self) -> float:
         # TODO: this is isn't fully implemented yet
@@ -181,7 +181,7 @@ class BufferModel:
         return self._field_models.get(field_name)
 
     def predict(self, buffer: bytes | NDArray[np.int_], buffer_structure: dict[int, int]) -> \
-            tuple[list[tuple[str, float]], NDArray[np.float_]]:
+            tuple[list[tuple[str, float, float]], NDArray[np.float_], NDArray[np.float_]]:
         """predicts the probability of bits originating from a valid (not an outlier) field
         :param buffer: the buffer to predict
         :param buffer_structure: a dictionary mapping the byte index in the buffer to the relevant mavlink message id
@@ -199,13 +199,15 @@ class BufferModel:
 
         # calculate the valid probability of each field
         valid_bits_probability = np.array([None] * len(bit_2_val_idx)).astype(np.float_)
-        valid_field_probability: list[tuple[str, float]] = [None] * len(fields)
+        bits_std = np.array([None] * len(bit_2_val_idx)).astype(np.float_)
+        valid_field_probability: list[tuple[str, float, float]] = [None] * len(fields)
         for field_idx, field_name, value in zip(range(len(fields)), ordered_field_names, fields):
             if field_name in self._field_models.keys():
-                val = self._field_models[field_name].classify_value(value)
+                val, std = self._field_models[field_name].classify_value(value)
                 valid_bits_probability[bit_2_val_idx == field_idx] = val
-                valid_field_probability[field_idx] = (field_name, val)
-        return valid_field_probability, valid_bits_probability
+                bits_std[bit_2_val_idx == field_idx] = std
+                valid_field_probability[field_idx] = (field_name, val, std)
+        return valid_field_probability, valid_bits_probability, bits_std
 
     @staticmethod
     def unpack_values(buffer: bytes | NDArray[np.int_], buffer_structure: dict[int, int]) -> tuple:
@@ -322,11 +324,10 @@ class BufferModel:
         :return: a list of tuples of the damaged field name and the field index in the buffer.
         """
         bit_2_val_idx, ordered_field_names, _ = self.unpack_structure(True, buffer_len, structure)
-        field_idx = {name: i for i, name in enumerate(ordered_field_names)}
+        ordered_field_names = [(name, i) for i, name in enumerate(ordered_field_names)]
         return [
             (
-                ordered_field_names[bit_2_val_idx[error]],
-                field_idx[ordered_field_names[bit_2_val_idx[error]]],
+                ordered_field_names[bit_2_val_idx[error]]
             )
             for error in np.sort(error_indices)
             if bit_2_val_idx[error] >= 0

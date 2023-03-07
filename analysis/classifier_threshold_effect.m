@@ -2,7 +2,7 @@ clear
 close all
 clc
 
-rootdir = '../scripts/results/cluster_2';
+rootdir = '../scripts/results/test';
 filelist = dir(fullfile(rootdir, '**/*summary*.mat'));  %get list of files and folders in any subfolder
 filelist = filelist(~[filelist.isdir]);  %remove folders from list
 
@@ -56,12 +56,12 @@ ylabel('True positive rate - bad fields')
 title('ROC')
 
 subplot(2,2,2)
-plot(thr(mask),tpr(end-2:end,mask).','o')
+plot(thr(mask),tpr(end-2:end,mask).','-o')
 xlabel('Threshold')
 ylabel('True positive rate - bad fields')
 
 subplot(2,2,3)
-plot(thr(mask),fpr(end-2:end,mask).','o')
+plot(thr(mask),fpr(end-2:end,mask).','-o')
 xlabel('Threshold')
 ylabel('False positive rate - bad fields')
 
@@ -109,12 +109,12 @@ ylabel('True positive rate - good fields')
 title('ROC')
 
 subplot(2,2,2)
-plot(thr(mask),tpr(end-2:end,mask).','o')
+plot(thr(mask),tpr(end-2:end,mask).','-o')
 xlabel('Threshold')
 ylabel('True positive rate - good fields')
 
 subplot(2,2,3)
-plot(thr(mask),fpr(end-2:end,mask).','o')
+plot(thr(mask),fpr(end-2:end,mask).','-o')
 xlabel('Threshold')
 ylabel('False positive rate - good fields')
 

@@ -6,10 +6,8 @@ from ldpc.encoder import EncoderWiFi
 from ldpc.wifi_spec_codes import WiFiSpecCode
 from ldpc.decoder import bsc_llr
 from numpy.typing import NDArray
-from utils.bit_operations import hamming_distance
 from inference import BufferSegmentation, BufferModel
 from protocol_meta import dialect_meta as meta
-# import matplotlib.pyplot as plt
 import argparse
 import datetime
 import os
@@ -107,13 +105,13 @@ model_length = encoder.k
 logger = setup_logger(name=__file__, log_file=os.path.join("results/", 'log.log'))
 
 
-def classifier_characterization(valid_field_p: list[tuple[str, float]], valid_bits_p: NDArray[np.float_], thr,
+def classifier_characterization(valid_field_p: list[tuple[str, float, float]], valid_bits_p: NDArray[np.float_], thr,
                                 damaged_fields_idx: NDArray[np.int_]
                                 ) -> dict[str, Any]:
     good_bits: NDArray[np.bool_] = valid_bits_p > 1 - thr
     bad_bits: NDArray[np.bool_] = valid_bits_p < thr
-    good_fields: list[int] = [idx for idx, vfp in enumerate(valid_field_p) if vfp[1] >= 1 - thr]
-    bad_fields: list[int] = [idx for idx, vfp in enumerate(valid_field_p) if vfp[1] <= thr]
+    good_fields: list[int] = [idx for idx, vfp in enumerate(valid_field_p) if vfp[1] > 1 - thr]
+    bad_fields: list[int] = [idx for idx, vfp in enumerate(valid_field_p) if vfp[1] < thr]
 
     good_fields_true = 0
     good_fields_false = 0
@@ -153,9 +151,60 @@ def classifier_characterization(valid_field_p: list[tuple[str, float]], valid_bi
             "good_fields_performance": good_fields_performance, "bad_fields_performance": bad_fields_performance}
 
 
-def forcing_characterization(valid_field_p: list[tuple[str, float]], valid_bits_p: NDArray[np.float_], thr,
-                             damaged_fields_idx: NDArray[np.int_]) -> dict[str, Any]:
-    return {}
+def forcing_characterization(valid_field_p: list[tuple[str, float, float]], valid_bits_p: NDArray[np.float_],
+                             bitwise_std: NDArray[np.float_], label: int,
+                             damaged_fields_idx: NDArray[np.int_], errors: NDArray[np.int_], data_model: BufferModel,
+                             rx: NDArray[np.int_], tx: NDArray[np.int_]) -> dict[str, Any]:
+    buffer_len_bits = len(rx)
+
+    forced_bits = np.where((valid_bits_p <= 0) & (bitwise_std == 0))[0]
+    correctly_forced_bits = np.intersect1d(forced_bits, errors)
+    incorrectly_forced_bits = np.setdiff1d(forced_bits, errors)
+    missed_forced_bits = np.setdiff1d(errors, forced_bits)
+    forced_fields = np.array([idx for idx, vfp in enumerate(valid_field_p) if (vfp[1] <= 0 and vfp[2] == 0)], dtype=np.int_)
+    correctly_forced_fields = np.intersect1d(forced_fields, damaged_fields_idx)
+    incorrectly_forced_fields = np.setdiff1d(forced_fields, damaged_fields_idx)
+    missed_forced_fields = np.setdiff1d(damaged_fields_idx, forced_fields)
+
+    true_positive = correctly_forced_bits.size
+    false_positive = incorrectly_forced_bits.size
+    positive = errors.size
+    negative = buffer_len_bits - positive
+    forced_bits_performance = np.array([true_positive, false_positive, negative - false_positive,
+                                        positive - true_positive, positive, negative], dtype=np.int_)
+
+    n_fields_in_buffer = len(valid_field_p)
+    n_damaged_fields_in_buffer = len(damaged_fields_idx)
+    true_positive = correctly_forced_fields.size
+    false_positive = incorrectly_forced_fields.size
+    positive = n_damaged_fields_in_buffer
+    negative = n_fields_in_buffer - positive
+    forced_fields_performance = np.array([true_positive, false_positive, negative - false_positive,
+                                          positive - true_positive, positive, negative], dtype=np.int_)
+
+    model_bits = data_model.bitwise_model_mean(forced_bits, buffer_len_bits // 8, buffer_structures[label])
+    bits_flipped_from_forced = forced_bits[(model_bits ^ rx[forced_bits]).astype(np.bool_)]
+    n_bits_flipped = bits_flipped_from_forced.size
+    correctly_flipped_bits = np.intersect1d(bits_flipped_from_forced, errors)
+    incorrectly_flipped_bits = np.setdiff1d(bits_flipped_from_forced, errors)
+
+    forcing_quality = np.array([errors.size, forced_bits.size, n_bits_flipped, correctly_flipped_bits.size,
+                                incorrectly_flipped_bits.size, sum(tx[forced_bits] ^ model_bits) / forced_bits.size], dtype=np.float_)
+
+    true_positive = correctly_flipped_bits.size
+    false_positive = incorrectly_flipped_bits.size
+    positive = errors.size
+    negative = buffer_len_bits - positive
+    flipped_bits_performance = np.array([true_positive, false_positive, negative - false_positive,
+                                        positive - true_positive, positive, negative], dtype=np.int_)
+
+    return {"forced_fields": forced_fields, "forced_bits": forced_bits, "correctly_forced_bits": correctly_forced_bits,
+            "incorrectly_forced_bits": incorrectly_forced_bits, "missed_forced_bits": missed_forced_bits,
+            "correctly_forced_fields": correctly_forced_fields, "incorrectly_forced_fields": incorrectly_forced_fields,
+            "missed_forced_fields": missed_forced_fields, "forced_bits_performance": forced_bits_performance,
+            "forced_fields_performance": forced_fields_performance, "forcing_quality": forcing_quality,
+            "flipped_bits_performance": flipped_bits_performance
+            }
 
 
 def simulation_step(p: float) -> dict[str, Any]:
@@ -198,8 +247,6 @@ def simulation_step(p: float) -> dict[str, Any]:
     n_fields_in_buffer: NDArray[np.int_] = np.zeros(n, dtype=np.int_)
     n_damaged_fields_in_buffer: NDArray[np.int_] = np.zeros(n, dtype=np.int_)
 
-    n_bits_flipped: list[int] = [0] * n
-    erroneously_forced_bits: list[int] = [0] * n
     forced_fields: list[NDArray[np.int_]] = [None] * n
     damaged_fields: list[NDArray[np.int_]] = [None] * n
 
@@ -214,7 +261,11 @@ def simulation_step(p: float) -> dict[str, Any]:
     forced_fields_performance: NDArray[np.int_] = np.zeros((n, 6), dtype=np.int_)
     forced_bits_performance: NDArray[np.int_] = np.zeros((n, 6), dtype=np.int_)
     # forcing quality states how good is te mean of the model as a predictor of actual bit values.
+    # It is calculated as the error rate of the buffer when the mean is used as a predictor of the actual bit values versus
+    # the error rate of the buffer when the channel bit values are used.
+    # The matrix also contains the number of flipped bits and a breakdown of good versus bad flips.
     forcing_quality: NDArray[np.float_] = np.zeros((n, 6), dtype=np.float_)
+    flipped_bits_performance: NDArray[np.int_] = np.zeros((n, 6), dtype=np.int_)
 
     for tx_idx in range(n):
         corrupted = BitArray(encoded[tx_idx])
@@ -224,7 +275,7 @@ def simulation_step(p: float) -> dict[str, Any]:
         channel_llr = channel(corrupted)
 
         # predict
-        valid_field_p, valid_bits_p = data_model.predict(corrupted, buffer_structures[running_idx])
+        valid_field_p, valid_bits_p, bits_field_std = data_model.predict(corrupted, buffer_structures[running_idx])
         damaged = data_model.find_damaged_fields(errors[tx_idx], buffer_structures[running_idx], len(corrupted) // 8)
         damaged_fields[tx_idx] = np.array(tuple({field[1] for field in damaged}), dtype=np.int_)
 
@@ -239,89 +290,21 @@ def simulation_step(p: float) -> dict[str, Any]:
         good_fields_performance[tx_idx] = classifier_res["good_fields_performance"]
         bad_fields_performance[tx_idx] = classifier_res["bad_fields_performance"]
 
-        # good_bits[tx_idx]: NDArray[np.bool_] = valid_bits_p > 1 - args.threshold
-        # bad_bits[tx_idx]: NDArray[np.bool_] = valid_bits_p < args.threshold
-        #
-        # good_fields[tx_idx]: list[int] = []
-        # for idx, vfp in enumerate(valid_field_p):
-        #     if vfp[1] >= 1 - args.threshold:
-        #         good_fields[tx_idx].append(idx)
-        # bad_fields[tx_idx]: list[int] = []
-        # for idx, vfp in enumerate(valid_field_p):
-        #     if vfp[1] <= args.threshold:
-        #         bad_fields[tx_idx].append(idx)
-
-        # good_fields_true = 0
-        # good_fields_false = 0
-        # bad_fields_true = 0
-        # bad_fields_false = 0
-        # for idx in good_fields[tx_idx]:
-        #     if idx in damaged_fields[tx_idx]:
-        #         good_fields_false += 1
-        #     else:
-        #         good_fields_true += 1
-        # for idx in bad_fields[tx_idx]:
-        #     if idx in damaged_fields[tx_idx]:
-        #         bad_fields_true += 1
-        #     else:
-        #         bad_fields_false += 1
-        #
-        # n_fields_in_buffer[tx_idx] = len(valid_field_p)
-        # n_damaged_fields_in_buffer[tx_idx] = len(damaged_fields[tx_idx])
-        #
-        # true_positive = good_fields_true
-        # false_positive = good_fields_false
-        # positive = n_fields_in_buffer[tx_idx] - n_damaged_fields_in_buffer[tx_idx]
-        # negative = n_damaged_fields_in_buffer[tx_idx]
-        # # true positive, false positive, true negative, false negative, positive, negative
-        # good_fields_performance[tx_idx] = np.array([true_positive,
-        #                                             false_positive,
-        #                                             negative - false_positive,
-        #                                             positive - true_positive,
-        #                                             positive,
-        #                                             negative
-        #                                             ], dtype=np.int_)
-        #
-        # true_positive = bad_fields_true
-        # false_positive = bad_fields_false
-        # positive = n_damaged_fields_in_buffer[tx_idx]
-        # negative = n_fields_in_buffer[tx_idx] - n_damaged_fields_in_buffer[tx_idx]
-        # bad_fields_performance[tx_idx] = np.array([true_positive, false_positive, negative - false_positive,
-        #                                            positive - true_positive, positive, negative], dtype=np.int_)
-
         # look for constant bits for forcing
-        forced_fields[tx_idx] = np.array([idx for idx, vfp in enumerate(valid_field_p) if vfp[1] <= 0], dtype=np.int_)
-        forced_bits[tx_idx] = np.where(valid_bits_p <= 0)[0]
-
-        correctly_forced_bits[tx_idx] = np.intersect1d(forced_bits[tx_idx], errors[tx_idx])
-        incorrectly_forced_bits[tx_idx] = np.setdiff1d(forced_bits[tx_idx], errors[tx_idx])
-        missed_forced_bits[tx_idx] = np.setdiff1d(errors[tx_idx], forced_bits[tx_idx])
-        correctly_forced_fields[tx_idx] = np.intersect1d(forced_fields[tx_idx], damaged_fields[tx_idx])
-        incorrectly_forced_fields[tx_idx] = np.setdiff1d(forced_fields[tx_idx], damaged_fields[tx_idx])
-        missed_forced_fields[tx_idx] = np.setdiff1d(damaged_fields[tx_idx], forced_fields[tx_idx])
-
-        true_positive = correctly_forced_bits[tx_idx].size
-        false_positive = incorrectly_forced_bits[tx_idx].size
-        positive = errors[tx_idx].size
-        negative = len(corrupted) // 8 - positive
-        forced_bits_performance[tx_idx] = np.array([true_positive, false_positive, negative - false_positive,
-                                                    positive - true_positive, positive, negative], dtype=np.int_)
-
-        true_positive = correctly_forced_fields[tx_idx].size
-        false_positive = incorrectly_forced_fields[tx_idx].size
-        positive = n_damaged_fields_in_buffer[tx_idx]
-        negative = n_fields_in_buffer[tx_idx] - positive
-        forced_fields_performance[tx_idx] = np.array([true_positive, false_positive, negative - false_positive,
-                                                      positive - true_positive, positive, negative], dtype=np.int_)
-
-        if forced_bits[tx_idx].size > 0:
-            model_bits = data_model.bitwise_model_mean(forced_bits[tx_idx], len(corrupted) // 8,
-                                                       buffer_structures[running_idx])
-            # compare with actual bits
-            n_bits_flipped[tx_idx] = hamming_distance(corrupted[forced_bits[tx_idx]], model_bits)
-            for idx in forced_bits[tx_idx]:
-                if idx not in errors[tx_idx]:
-                    erroneously_forced_bits[tx_idx] += 1
+        forcing_res = forcing_characterization(valid_field_p, valid_bits_p, bits_field_std, running_idx, damaged_fields[tx_idx],
+                                               errors[tx_idx], data_model, corrupted, np.array(encoded[tx_idx], dtype=np.int_))
+        forced_fields[tx_idx] = forcing_res["forced_fields"]
+        forced_bits[tx_idx] = forcing_res["forced_bits"]
+        correctly_forced_bits[tx_idx] = forcing_res["correctly_forced_bits"]
+        incorrectly_forced_bits[tx_idx] = forcing_res["incorrectly_forced_bits"]
+        missed_forced_bits[tx_idx] = forcing_res["missed_forced_bits"]
+        correctly_forced_fields[tx_idx] = forcing_res["correctly_forced_fields"]
+        incorrectly_forced_fields[tx_idx] = forcing_res["incorrectly_forced_fields"]
+        missed_forced_fields[tx_idx] = forcing_res["missed_forced_fields"]
+        forced_fields_performance[tx_idx] = forcing_res["forced_fields_performance"]
+        forced_bits_performance[tx_idx] = forcing_res["forced_bits_performance"]
+        forcing_quality[tx_idx] = forcing_res["forcing_quality"]
+        flipped_bits_performance[tx_idx] = forcing_res["flipped_bits_performance"]
 
         running_idx = (running_idx + 1) % args.n_clusters
         logger.info(f"p= {p}, tx id: {tx_idx}")
@@ -335,12 +318,11 @@ def simulation_step(p: float) -> dict[str, Any]:
                                                          "parity_errors"])
 
     classifier_df = pd.DataFrame({"good_fields": good_fields, "bad_fields": bad_fields,
-                                  "forced_bits": forced_bits,
-                                  "forced_fields": forced_fields, "good_bits": good_bits, "bad_bits": bad_bits,
-                                  "n_bits_flipped": n_bits_flipped, "erroneously_forced_bits": erroneously_forced_bits,
+                                  "good_bits": good_bits, "bad_bits": bad_bits,
                                   "damaged_fields": damaged_fields, "cluster_label": running_idx})
     step_results["classifier"] = classifier_df
-    forcing_df = pd.DataFrame({"correctly_forced_bits": correctly_forced_bits,
+    forcing_df = pd.DataFrame({"forced_fields": forced_fields, "forced_bits": forced_bits,
+                               "correctly_forced_bits": correctly_forced_bits,
                                "incorrectly_forced_bits": incorrectly_forced_bits,
                                "missed_forced_bits": missed_forced_bits,
                                "correctly_forced_fields": correctly_forced_fields,
@@ -352,6 +334,9 @@ def simulation_step(p: float) -> dict[str, Any]:
     step_results["bad_fields_performance"] = bad_fields_performance
     step_results["forced_fields_performance"] = forced_fields_performance
     step_results["forced_bits_performance"] = forced_bits_performance
+    step_results["forcing_quality"] = forcing_quality
+    step_results["flipped_bits_performance"] = flipped_bits_performance
+
 
     return step_results
 
@@ -392,9 +377,9 @@ if __name__ == '__main__':
         f.write(cmd)
     logger.info(cmd)
 
-    # with Pool(processes=processes) as pool:
-    #     results: list[dict[str, Any]] = pool.map(simulation_step, bit_flip_p)
-    results: list[dict[str, Any]] = list(map(simulation_step, bit_flip_p))
+    with Pool(processes=processes) as pool:
+        results: list[dict[str, Any]] = pool.map(simulation_step, bit_flip_p)
+    # results: list[dict[str, Any]] = list(map(simulation_step, bit_flip_p))
 
     try:
         # with open(os.path.join(path, f'{timestamp}_classifier_analysis_2018.pickle'), "wb") as f:
@@ -405,6 +390,9 @@ if __name__ == '__main__':
         bad_fields_performance = np.array([p['bad_fields_performance'].sum(axis=0) for p in results])
         forced_fields_performance = np.array([p['forced_fields_performance'].sum(axis=0) for p in results])
         forced_bits_performance = np.array([p['forced_bits_performance'].sum(axis=0) for p in results])
+        forcing_quality = np.array([p['forcing_quality'].sum(axis=0) for p in results])
+        forcing_quality[:,-1] = forcing_quality[:, -1] / n
+        flipped_bits_performance = np.array([p['flipped_bits_performance'].sum(axis=0) for p in results])
         # fig = plt.figure()
         # plt.plot(raw_ber, ldpc_ber, 'bo', raw_ber, raw_ber, 'g^', raw_ber, rect_ber, 'r*')
         # plt.xlabel("BSC bit flip probability p")
@@ -422,7 +410,8 @@ if __name__ == '__main__':
         # logger.info("saved figures")
         summary = {"args": args, "good_fields_performance": good_fields_performance,
                    "bad_fields_performance": bad_fields_performance, "forced_fields_performance": forced_fields_performance,
-                   "forced_bits_performance": forced_bits_performance, "bit_flip_p": bit_flip_p}
+                   "forced_bits_performance": forced_bits_performance, "bit_flip_p": bit_flip_p,
+                   "forcing_quality": forcing_quality, "flipped_bits_performance": flipped_bits_performance}
         # with open(os.path.join(path, f'{timestamp}_summary_classifier_analysis_2018.pickle'), 'wb') as f:
         #     pickle.dump(summary, f)
         savemat(os.path.join(path, f'{timestamp}_summary_classifier_analysis_2018.mat'), summary)
@@ -433,7 +422,6 @@ if __name__ == '__main__':
             step['classifier'] = step['classifier'].to_dict("list")
             step["forcing"] = step["forcing"].to_dict("list")
 
-        summary["results"] = results
         summary = {"results": results}
         savemat(os.path.join(path, f'{timestamp}_classifier_analysis_2018.mat'),
                 summary, do_compression=True)

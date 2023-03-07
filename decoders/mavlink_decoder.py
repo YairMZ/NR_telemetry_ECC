@@ -23,7 +23,7 @@ class MavlinkRectifyingDecoder(Decoder):
     def __init__(self, ldpc_decoder: LogSpaDecoder, model_length: int, valid_thr: float, invalid_thr: float, n_clusters: int,
                  valid_factor: float, invalid_factor: float, classifier_training_size: int | None = None,
                  cluster: bool = True, window_length: int | None = None, data_model: BufferModel | None = None,
-                 conf_center: float = 0, conf_slope: float = 0) -> None:
+                 conf_center: float = 0, conf_slope: float = 0, debug: bool = False) -> None:
         """
         :param ldpc_decoder: decoder for ldpc code used
         :param model_length: length of assumed model in bits, first info bits are assumed to be model bits
@@ -66,11 +66,10 @@ class MavlinkRectifyingDecoder(Decoder):
 
         self.conf_center = conf_center
         self.conf_slope = conf_slope
+        self.debug = debug
         super().__init__(DecoderType.MAVLINK)
 
-    def decode_buffer(self, channel_llr: Sequence[np.float_], error_idx: NDArray[np.int_]) -> tuple[
-        NDArray[np.int_], NDArray[np.float_], bool, int, NDArray[np.int_], NDArray[np.int_], int, NDArray[np.bool_],
-        NDArray[np.bool_], NDArray[np.bool_], list[int], list[int], list[tuple[str,int]]]:
+    def decode_buffer(self, channel_llr: Sequence[np.float_], error_idx: NDArray[np.int_]) -> tuple[NDArray[np.int_], NDArray[np.float_], bool, int, NDArray[np.int_], NDArray[np.int_], int, NDArray[np.bool_],NDArray[np.bool_], NDArray[np.bool_], list[int], list[int], list[tuple[str,int]]]:
         """decodes a buffer
 
         :param channel_llr: bits to decode
@@ -98,27 +97,8 @@ class MavlinkRectifyingDecoder(Decoder):
             label = 0
 
         modified_llr, good_bits, bad_bits, good_field_idx, bad_field_idx, \
-                segmented_bits = self.model_prediction(channel_llr, label)
-        good_classification, bad_classification = 0, 0
-        if self.buffer_structures[label] is not None:
-            damaged_fields = self.model.find_damaged_fields(error_idx, self.buffer_structures[label], len(channel_llr)//8)
-            if damaged_fields:
-                damaged_fields_idx = tuple({field[1] for field in damaged_fields})
-                for field in good_field_idx:
-                    if field in damaged_fields_idx:
-                        bad_classification += 1
-                    else:
-                        good_classification += 1
-                for field in bad_field_idx:
-                    if field in damaged_fields_idx:
-                        good_classification += 1
-                    else:
-                        bad_classification += 1
-            else:
-                good_classification = len(good_field_idx)
-                bad_classification = len(bad_field_idx)
-        else:
-            damaged_fields = []
+                segmented_bits = self.model_prediction(channel_llr, label, error_idx)
+
         return self.decode_and_update_model(modified_llr, label, channel_bits) + \
                 (good_bits, bad_bits, segmented_bits, good_field_idx, bad_field_idx, damaged_fields)
 
@@ -146,10 +126,11 @@ class MavlinkRectifyingDecoder(Decoder):
                              f"({self.n_clusters})")
         self.buffer_structures = buffer_structures
 
-    def model_prediction(self, observation: NDArray[np.float_], cluster_id: int) -> \
+    def model_prediction(self, observation: NDArray[np.float_], cluster_id: int, error_idx: NDArray[np.int_]) -> \
             tuple[NDArray[np.float_], NDArray[np.bool_], NDArray[np.bool_], list[int], list[int], NDArray[np.bool_]]:
         """rectifies the observation using the model
 
+        :param error_idx: indices of bits that are in error. Used for debugging, and analysis of classifier performance.
         :param observation: observation to rectify
         :param cluster_id: cluster to use for rectification
         :return: rectified observation, good bits, bad bits, good fields, bad fields, segmented bits
@@ -157,18 +138,18 @@ class MavlinkRectifyingDecoder(Decoder):
         if self.buffer_structures[cluster_id] is None:
             return observation, np.array([]), np.array([]), [], [], np.array([])
         # non mavlink bits are nan
-        valid_field_p, valid_bits_p = self.model.predict(np.array(observation < 0, dtype=np.int_),
+        valid_field_p, valid_bits_p, bits_field_std = self.model.predict(np.array(observation < 0, dtype=np.int_),
                                                          self.buffer_structures[cluster_id])
         good_bits: NDArray[np.bool_] = valid_bits_p > 1 - self.valid_threshold
         bad_bits: NDArray[np.bool_] = valid_bits_p < self.invalid_thr
-        good_fields: list[int] = []
+        good_fields_idx: list[int] = []
         for idx, vfp in enumerate(valid_field_p):
             if vfp[1] > 1 - self.valid_threshold:
-                good_fields.append(idx)
-        bad_fields: list[int] = []
+                good_fields_idx.append(idx)
+        bad_fields_idx: list[int] = []
         for idx, vfp in enumerate(valid_field_p):
             if vfp[1] < self.invalid_thr:
-                bad_fields.append(idx)
+                bad_fields_idx.append(idx)
         if self.learning:  # if model is being learned, need to add a confidence factor to the rectification
             def model_confidence(model_size: int, center: float, slope: float) -> np.float_:
                 return 0 if model_size <= 1 else 1 / (1 + np.exp(-(model_size - center) * slope, dtype=np.float_))
@@ -191,7 +172,7 @@ class MavlinkRectifyingDecoder(Decoder):
             model_bits = self.model.bitwise_model_mean(forced_bits, len(observation) // 8, self.buffer_structures[cluster_id])
             max_llr = np.max(np.abs(observation))
             model_llr = np.power(-1, model_bits) * max_llr
-            # modified_llr[forced_bits] = model_llr * max(valid_factor, 1)
+            modified_llr[forced_bits] = model_llr * max(valid_factor, 1)
 
         # try to run buffer segmentation on the modified llr and on the original llr. If segmentation is able to locate
         # a mavlink message, these bits are good and should be forced.
@@ -207,8 +188,49 @@ class MavlinkRectifyingDecoder(Decoder):
                 pass
                 # modified_llr[np.where(valid_info_bits == 1)[0]] = modified_llr[np.where(valid_info_bits == 1)] * 2
                 # multiply by 2 for confidence
-        return modified_llr, good_bits, bad_bits, good_fields, bad_fields, \
-            np.pad(valid_info_bits, (0, len(good_bits) - len(valid_info_bits))).astype(np.bool_)
+
+        if self.debug:
+            self.classifier_analysis(error_idx, good_fields_idx, bad_fields_idx, len(valid_field_p), cluster_id)
+        return modified_llr, good_bits, bad_bits, good_fields_idx, bad_fields_idx, \
+            np.pad(valid_info_bits, (0, len(modified_llr) - len(valid_info_bits))).astype(np.bool_)
+
+    def classifier_analysis(self, error_idx, good_fields_idx, bad_fields_idx, n_fields, label=0):
+        if self.buffer_structures[label] is None:
+            return
+        damaged = self.model.find_damaged_fields(error_idx, self.buffer_structures[label], len(channel_llr) // 8)
+        if not damaged:
+            return
+
+        damaged_fields = tuple({field[1] for field in damaged})
+        good_fields_true, good_fields_false, bad_fields_true, bad_fields_false = 0, 0, 0, 0
+        for field in good_fields_idx:
+            if field in damaged_fields:
+                good_fields_false += 1
+            else:
+                good_fields_true += 1
+        for field in bad_fields_idx:
+            if field in damaged_fields:
+                bad_fields_true += 1
+            else:
+                bad_fields_false += 1
+        n_damaged_fields = len(damaged)
+
+        true_positive = good_fields_true
+        false_positive = good_fields_false
+        positive = n_fields - n_damaged_fields
+        negative = n_damaged_fields
+        # true positive, false positive, true negative, false negative, positive, negative
+        good_fields_performance = np.array([true_positive, false_positive, negative - false_positive, positive - true_positive,
+                                                    positive, negative], dtype=np.int_)
+        true_positive = bad_fields_true
+        false_positive = bad_fields_false
+        positive = n_damaged_fields
+        negative = n_fields - n_damaged_fields
+        # true positive, false positive, true negative, false negative, positive, negative
+        bad_fields_performance = np.array([true_positive, false_positive, negative - false_positive, positive - true_positive,
+                                                   positive, negative], dtype=np.int_)
+
+
 
 # decode_success = False
 # iterations_to_convergence = 0
