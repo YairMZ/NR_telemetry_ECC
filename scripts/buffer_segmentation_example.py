@@ -27,14 +27,12 @@ buffer_model2 = BufferModel.load('test_fields_collection.json')
 
 # test prediction on good buffer with hard bit values, return prediction per field
 bit_arr = np.unpackbits(np.frombuffer(good_buffer, dtype=np.uint8))
-prediction = buffer_model2.predict(bit_arr, buffer_structure, False)
-# test prediction on good buffer by sending a bytes object, return prediction per bit
-prediction = buffer_model2.predict(good_buffer, buffer_structure)
+field_prediction, bitwise_prediction = buffer_model2.predict(bit_arr, buffer_structure)
 # test prediction on bad buffer by sending a bytes object, return prediction per field
-prediction = buffer_model2.predict(bad_buffer, buffer_structure, False)
+field_prediction, bitwise_prediction = buffer_model2.predict(bad_buffer, buffer_structure)
 
 # train models
-window_size = 100
+window_size = None
 with open('../runs/HC_eilat_July_2018/data/hc_to_ship.pickle', 'rb') as f:
     hc_tx = pickle.load(f)
     hc_bin_data = [Bits(auto=tx.get("bin")) for tx in hc_tx.get("20000")]
@@ -54,7 +52,7 @@ for tx in hc_bin_data:
 #         buffer_model.add_sample(field_name, vals[0], vals[1])
 
 # make prediction regarding good buffer
-p_good = buffer_model.predict(np.array(hc_bin_data[-1], dtype=np.uint8), structure, False)
+p_good_field, p_good_bits = buffer_model.predict(np.array(hc_bin_data[-1], dtype=np.uint8), structure)
 # corrupt some bits
 # take last buffer
 corrupt_tx = BitArray(hc_bin_data[-1])
@@ -65,14 +63,16 @@ error_indices = np.sort(rng.choice(50*8, size=no_errors, replace=False))  # firs
 corrupt_tx.invert(error_indices)
 bit_arr = np.array(corrupt_tx, dtype=np.uint8)
 # make prediction regarding corrupt buffer
-p_bad = buffer_model.predict(bit_arr, structure, False)
+p_bad_field, p_bad_bits = buffer_model.predict(bit_arr, structure)
 # save model
-buffer_model.save(f'model_2018_window_size_{window_size}.json')
+if window_size is None:
+    buffer_model.save('model_2018_all.json')
+else:
+    buffer_model.save(f'model_2018_window_size_{window_size}.json')
 # # find damaged fields based on error indices
-damaged_fields = buffer_model.find_damaged_fields(error_indices, structure)
-for idx in range(len(p_bad)):
-    if p_bad[idx][1] != p_good[idx][1]:
-        print(f'{p_bad[idx][0]}: delta={(p_good[idx][1] - p_bad[idx][1])/p_good[idx][1]}')
-
-# prediction using bitwise return
-p_bitwise = buffer_model.predict(hc_bin_data[-1].tobytes(), structure)
+damaged_fields = buffer_model.find_damaged_fields(error_indices, structure, len(hc_bin_data[-1].tobytes()))
+print(f"error indices: {error_indices}")
+for idx in range(len(p_bad_field)):
+    if p_bad_field[idx][1] != p_good_field[idx][1]:
+        print(f'{p_bad_field[idx][0]}: delta={(p_good_field[idx][1] - p_bad_field[idx][1])/p_good_field[idx][1]}')
+print(f"damaged fields: {damaged_fields}")

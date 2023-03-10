@@ -88,8 +88,11 @@ class BufferSegmentation:
         reconstruction, only break down to good and bad parts.
 
         :param buffer: a buffer containing one or more MAVLink msgs
-        :return: a tuple. The first element is a np.ndarray of predicted message parts. The second is a np.ndarray of
-        bit validity. The third is a dictionary which can be converter into a BufferStructure object.
+        :return: a tuple.
+         - The first element is a np.ndarray of predicted message parts.
+         - The second is a np.ndarray of bit validity.
+         - The third is a dictionary mapping the byte index in the buffer to the start of the relevant mavlink message
+         and can be converted into a BufferStructure object.
         """
 
         msg_parts: npt.NDArray[np.object_] = np.array([MsgParts.UNKNOWN] * len(buffer))  # enum value per bytes of the buffer.
