@@ -4,6 +4,7 @@ import numpy as np
 from ldpc.encoder import EncoderWiFi
 from ldpc.wifi_spec_codes import WiFiSpecCode
 from ldpc.decoder import bsc_llr, DecoderWiFi
+from numpy.typing import NDArray
 from decoders import MavlinkRectifyingDecoder
 from inference import BufferSegmentation, BufferModel
 from protocol_meta import dialect_meta as meta
@@ -153,6 +154,8 @@ def simulation_step(p: float) -> dict[str, Any]:
               for _ in range(n))
     )
     step_results: dict[str, Any] = {'data': hc_bin_data[:n]}
+    good_fields_performance: NDArray[np.int_] = np.zeros((n, 6), dtype=np.int_)
+    bad_fields_performance: NDArray[np.int_] = np.zeros((n, 6), dtype=np.int_)
     for tx_idx in range(n):
         corrupted = BitArray(encoded[tx_idx])
         corrupted.invert(errors[tx_idx])
@@ -183,8 +186,8 @@ def simulation_step(p: float) -> dict[str, Any]:
     # decoding
     decoded_rect_df = pd.DataFrame(decoded_rect,
                                    columns=["estimate", "llr", "decode_success", "iterations", "syndrome", "vnode_validity",
-                                            "cluster_label", "good_bits", "bad_bits", "segmented_bits", "good_field_idx",
-                                            "bad_field_idx", "damaged_fields", "hamming"])
+                                            "cluster_label", "segmented_bits", "good_field_idx",
+                                            "bad_field_idx", "classifier_performance", "forcing_performance", "hamming"])
     step_results["decoded_rect"] = decoded_rect_df
     decoded_ldpc_df = pd.DataFrame(decoded_ldpc,
                                    columns=["estimate", "llr", "decode_success", "iterations", "syndrome",
@@ -237,7 +240,7 @@ if __name__ == '__main__':
           f'--ldpciterations {ldpc_iterations} --segiterations {args.segiterations} --multiply_data {args.multiply_data} ' \
           f'--msg_delay {args.msg_delay} --dec_type {args.dec_type} --classifier_train {args.classifier_train} ' \
           f'--n_clusters {args.n_clusters} --cluster {args.cluster} --valid_threshold {args.valid_threshold} ' \
-          f'--invalid_threshold {args.invalid_threshold}' \
+          f'--invalid_threshold {args.invalid_threshold} ' \
           f'--valid_factor {args.valid_factor} --invalid_factor {args.invalid_factor} --conf_center {args.conf_center} ' \
           f'--conf_slope {args.conf_slope} --learn {args.learn}'
     if args.N > 0:

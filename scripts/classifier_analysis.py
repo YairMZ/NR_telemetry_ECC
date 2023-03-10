@@ -188,8 +188,13 @@ def forcing_characterization(valid_field_p: list[tuple[str, float, float]], vali
     correctly_flipped_bits = np.intersect1d(bits_flipped_from_forced, errors)
     incorrectly_flipped_bits = np.setdiff1d(bits_flipped_from_forced, errors)
 
-    forcing_quality = np.array([errors.size, forced_bits.size, n_bits_flipped, correctly_flipped_bits.size,
-                                incorrectly_flipped_bits.size, sum(tx[forced_bits] ^ model_bits) / forced_bits.size], dtype=np.float_)
+    if forced_bits.size > 0:
+        forcing_quality = np.array([errors.size, forced_bits.size, n_bits_flipped, correctly_flipped_bits.size,
+                                    incorrectly_flipped_bits.size, sum(tx[forced_bits] ^ model_bits) / forced_bits.size
+                                    ], dtype=np.float_)
+    else:
+        forcing_quality = np.array([errors.size, forced_bits.size, n_bits_flipped, correctly_flipped_bits.size,
+                                    incorrectly_flipped_bits.size, 0], dtype=np.float_)
 
     true_positive = correctly_flipped_bits.size
     false_positive = incorrectly_flipped_bits.size
