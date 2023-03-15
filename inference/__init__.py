@@ -2,5 +2,6 @@
 from .statistical_models import FieldModel, BufferModel
 from .buffer_segmentation import MsgParts, BufferStructure, BufferSegmentation
 from .clustering import Cluster, BufferClassifier
+from .bmm import BMM
 __all__: list[str] = ["MsgParts", "BufferStructure", "BufferSegmentation", "Cluster", "BufferClassifier", "FieldModel",
-                      "BufferModel"]
+                      "BufferModel", "BMM"]
