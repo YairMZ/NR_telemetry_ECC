@@ -27,11 +27,11 @@ parser.add_argument("--minflip", default=33 * 1e-3, help="minimal bit flip proba
 parser.add_argument("--maxflip", default=70 * 1e-3, help="maximal bit flip probability to consider", type=float)
 parser.add_argument("--nflips", default=20, help="number of bit flips to consider", type=int)
 parser.add_argument("--ldpciterations", default=20, help="number of iterations of  LDPC decoder", type=int)
-parser.add_argument("--segiterations", default=2, help="number of exchanges between LDPC and CB decoder", type=int)
+parser.add_argument("--segiterations", default=1, help="number of exchanges between LDPC and CB decoder", type=int)
 parser.add_argument("--multiply_data", default=0, help="multiplies amount of buffers by 2 to power of arg", type=int)
 parser.add_argument("--processes", default=0, help="number of processes to spawn", type=int)
 parser.add_argument("--dec_type", default="BP", help="scheme for determining confidence", type=str)
-parser.add_argument("--classifier_train", default=100, help="number of buffers to use for classifier training", type=int)
+parser.add_argument("--classifier_train", default=100, help="number of buffers used for classifier training", type=int)
 parser.add_argument("--n_clusters", default=1, help="number of clusters", type=int)
 parser.add_argument("--msg_delay", default="50000", help="sampling delay", type=str)
 parser.add_argument("--cluster", default=1, help="enable or disable clustering", type=int)
@@ -69,6 +69,8 @@ elif args.n_clusters == 2:
     spec = WiFiSpecCode.N1296_R12
 elif args.n_clusters == 3:
     spec = WiFiSpecCode.N648_R34
+else:
+    raise ValueError("Invalid number of clusters")
 encoder = EncoderWiFi(spec=spec)
 encoded = []
 for binary_data in hc_bin_data[:n]:
@@ -137,12 +139,14 @@ def simulation_step(p: float) -> dict[str, Any]:
     global logger
 
     channel = bsc_llr(p=p)
-    ldpc_decoder = DecoderWiFi(spec=spec, max_iter=ldpc_iterations, decoder_type=args.dec_type)
-    rectify_decoder = MavlinkRectifyingDecoder(DecoderWiFi(spec=spec, max_iter=ldpc_iterations, decoder_type=args.dec_type),
-                                               model_length, args.valid_threshold, args.invalid_threshold, args.n_clusters,
-                                               args.valid_factor,
-                                               args.invalid_factor, args.classifier_train, bool(args.cluster), window_len,
-                                               data_model, args.conf_center, args.conf_slope)
+    ldpc_decoder = DecoderWiFi(spec=spec, max_iter=args.segiterations*ldpc_iterations, decoder_type=args.dec_type)
+    rectify_decoder = MavlinkRectifyingDecoder(DecoderWiFi(spec=spec, max_iter=ldpc_iterations,
+                                                           decoder_type=args.dec_type),
+                                               model_length, args.valid_threshold, args.invalid_threshold,
+                                               args.n_clusters, args.valid_factor, args.invalid_factor,
+                                               args.classifier_train, bool(args.cluster), window_len,
+                                               data_model, args.conf_center, args.conf_slope,
+                                               segmentation_iterations=args.segiterations)
     if not bool(args.cluster):
         rectify_decoder.set_buffer_structures(buffer_structures)
     no_errors = int(encoder.n * p)
@@ -185,9 +189,10 @@ def simulation_step(p: float) -> dict[str, Any]:
 
     # decoding
     decoded_rect_df = pd.DataFrame(decoded_rect,
-                                   columns=["estimate", "llr", "decode_success", "iterations", "syndrome", "vnode_validity",
-                                            "cluster_label", "segmented_bits", "good_field_idx",
-                                            "bad_field_idx", "classifier_performance", "forcing_performance", "hamming"])
+                                   columns=["estimate", "llr", "decode_success", "iterations", "syndrome",
+                                            "vnode_validity", "cluster_label", "segmented_bits", "good_field_idx",
+                                            "bad_field_idx", "classifier_performance", "forcing_performance",
+                                            "hamming"])
     step_results["decoded_rect"] = decoded_rect_df
     decoded_ldpc_df = pd.DataFrame(decoded_ldpc,
                                    columns=["estimate", "llr", "decode_success", "iterations", "syndrome",

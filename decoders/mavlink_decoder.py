@@ -30,7 +30,8 @@ class MavlinkRectifyingDecoder(Decoder):
     def __init__(self, ldpc_decoder: LogSpaDecoder, model_length: int, valid_thr: float, invalid_thr: float, n_clusters: int,
                  valid_factor: float, invalid_factor: float, classifier_training_size: int | None = None,
                  cluster: bool = True, window_length: int | None = None, data_model: BufferModel | None = None,
-                 conf_center: float = 0, conf_slope: float = 0, debug: bool = False) -> None:
+                 conf_center: float = 0, conf_slope: float = 0, debug: bool = False, segmentation_iterations: int = 1
+                 ) -> None:
         """
         :param ldpc_decoder: decoder for ldpc code used
         :param model_length: length of assumed model in bits, first info bits are assumed to be model bits
@@ -45,6 +46,8 @@ class MavlinkRectifyingDecoder(Decoder):
         :param data_model: optional model for data bits, if model is given, the decoder will not learn but use the model
         :param conf_center: center of model confidence sigmoid
         :param conf_slope: slope of model confidence sigmoid
+        :param debug: analyze classifier and bit forcing performance
+        :param segmentation_iterations: number of times to run segmentation (feedback loop)
         """
         self.invalid_thr = invalid_thr
         self.buffer_structures: Sequence[dict[int, int]] = [None] * n_clusters
@@ -74,9 +77,10 @@ class MavlinkRectifyingDecoder(Decoder):
         self.conf_center = conf_center
         self.conf_slope = conf_slope
         self.debug = debug
+        self.segmentation_iterations = segmentation_iterations
         super().__init__(DecoderType.MAVLINK)
 
-    def decode_buffer(self, channel_llr: Sequence[np.float_], error_idx: NDArray[np.int_]) -> \
+    def decode_buffer(self, channel_llr: NDArray[np.float_], error_idx: NDArray[np.int_]) -> \
             tuple[NDArray[np.int_], NDArray[np.float_], bool, int, NDArray[np.int_], NDArray[np.int_], int, NDArray[np.bool_],
             list[int], list[int], dict[str,Any], dict[str,Any]]:
         """decodes a buffer
@@ -91,28 +95,35 @@ class MavlinkRectifyingDecoder(Decoder):
             - number of MAVLink messages found within buffer
         """
         # TODO: add feedback loop
-        # channel_input: NDArray[np.float_] = np.array(channel_llr, dtype=np.float_)
         channel_bits: NDArray[np.int_] = np.array(channel_llr < 0, dtype=np.int_)
-        if self.n_clusters > 1:
-            if self.cluster:
-                label: int = self.classifier.classify(channel_bits[self.model_bits_idx])
-                if label < 0:  # label is negative during training phase of classifier, don't try to use model to rectify
-                    return self.decode_and_update_model(channel_llr, label, channel_bits) + (np.array([]), [], [], {}, {})
-            else:
-                self.running_idx = (self.running_idx + 1) % self.n_clusters
-                label = self.running_idx
-        else:  # no clustering, single buffer type
-            label = 0
+        decoder_input = channel_llr.copy()
+        all_iteration = 0
+        for _ in range(self.segmentation_iterations):
+            if self.n_clusters > 1:
+                if self.cluster:
+                    label: int = self.classifier.classify(channel_bits[self.model_bits_idx])
+                    if label < 0:  # label is negative during training phase of classifier, don't try to use model to rectify
+                        return self.decode_and_update_model(channel_llr, label, channel_bits) + (np.array([]), [], [], {}, {})
+                else:
+                    self.running_idx = (self.running_idx + 1) % self.n_clusters
+                    label = self.running_idx
+            else:  # no clustering, single buffer type
+                label = 0
 
-        segmented_bits: NDArray[np.bool_]
-        good_fields_idx: list[int]
-        bad_fields_idx: list[int]
-        n_fields: int
-        forced_bits: NDArray[np.int_]
-        good_bits: NDArray[np.int_]
-        bad_bits: NDArray[np.int_]
-        modified_llr, good_bits, bad_bits, good_fields_idx, bad_fields_idx, n_fields, forced_bits,\
-            segmented_bits = self.model_prediction(channel_llr, label)
+            segmented_bits: NDArray[np.bool_]
+            good_fields_idx: list[int]
+            bad_fields_idx: list[int]
+            n_fields: int
+            forced_bits: NDArray[np.int_]
+            good_bits: NDArray[np.int_]
+            bad_bits: NDArray[np.int_]
+            decoder_input, good_bits, bad_bits, good_fields_idx, bad_fields_idx, n_fields, forced_bits,\
+                segmented_bits = self.model_prediction(decoder_input, label)
+            estimate, decoder_input, decode_success, iterations, syndrome, vnode_validity, label = self.decode_and_update_model(
+                decoder_input, label, channel_bits)
+            all_iteration += iterations
+            if decode_success:
+                break
         if self.debug:
             classifier_performance = self.classifier_analysis(good_fields_idx, bad_fields_idx, error_idx, n_fields,
                                                               label)
@@ -121,8 +132,8 @@ class MavlinkRectifyingDecoder(Decoder):
             classifier_performance = {}
             forcing_performance = {}
 
-        return self.decode_and_update_model(modified_llr, label, channel_bits) + (
-            segmented_bits, good_fields_idx, bad_fields_idx, classifier_performance, forcing_performance)
+        return estimate, decoder_input, decode_success, all_iteration, syndrome, vnode_validity, label,\
+            segmented_bits, good_fields_idx, bad_fields_idx, classifier_performance, forcing_performance
 
     def decode_and_update_model(self, llr, label, channel_bits) -> tuple[
         NDArray[np.int_], NDArray[np.float_], bool, int, NDArray[np.int_], NDArray[np.int_], int]:
@@ -178,7 +189,7 @@ class MavlinkRectifyingDecoder(Decoder):
             invalid_factor = self.invalid_factor
         # rectify
         modified_llr: NDArray[np.float_] = observation.copy()
-        use_soft_rectification = True
+        use_soft_rectification = False
         if use_soft_rectification:
             factor = np.ones(observation.shape, dtype=np.float_)
             factor[good_bits] += (valid_bits_p[good_bits] - 0.5) * 2
@@ -203,13 +214,14 @@ class MavlinkRectifyingDecoder(Decoder):
         info_bytes = self.ldpc_decoder.info_bits(np.array(observation < 0, dtype=np.int_)).tobytes()
         parts, valid_info_bits, structure = self.bs.segment_buffer(info_bytes)
         if structure:
-            modified_llr[np.where(valid_info_bits == 1)[0]] = observation[np.where(valid_info_bits == 1)[0]] * 2
+            modified_llr[np.where(valid_info_bits == 1)[0]] = observation[np.where(valid_info_bits == 1)[0]] * 2 * valid_factor
+            print("found segmentation")
             # multiply by 2 for confidence
         else:
             info_bytes = self.ldpc_decoder.info_bits(np.array(modified_llr < 0, dtype=np.int_)).tobytes()
             parts, valid_info_bits, structure = self.bs.segment_buffer(info_bytes)
             if structure:
-                modified_llr[np.where(valid_info_bits == 1)[0]] = modified_llr[np.where(valid_info_bits == 1)] * 2
+                modified_llr[np.where(valid_info_bits == 1)[0]] *= 2
                 print("found segmentation")
                 # multiply by 2 for confidence
 
