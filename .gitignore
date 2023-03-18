@@ -135,3 +135,5 @@ dmypy.json
 scripts/results
 *.csv
 test_fields_collection.json
+runs/clsutering_analysis/results
+*.pdf

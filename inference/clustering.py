@@ -41,6 +41,14 @@ class Cluster:
 class BufferClassifier:
     def __init__(self, min_data_size: int, k: int, classify_dist: str = "LL", merge_dist: str = "Hellinger",
                  weight_scheme: str = "linear") -> None:
+        """
+
+        :param min_data_size: number of samples before clustering is initialized
+        :param k: number of clusters
+        :param classify_dist: metric used to classify a buffer
+        :param merge_dist: metric used to merge clusters
+        :param weight_scheme: weight scheme used to merge clusters
+        """
         self.min_data_size: int = min_data_size
         self.k: int = k
         self.clusters: list[Cluster] = []
