@@ -35,8 +35,8 @@ parser.add_argument("--classifier_train", default=100, help="number of buffers u
 parser.add_argument("--n_clusters", default=1, help="number of clusters", type=int)
 parser.add_argument("--msg_delay", default="50000", help="sampling delay", type=str)
 parser.add_argument("--cluster", default=1, help="enable or disable clustering", type=int)
-parser.add_argument("--valid_factor", default=1.1, help="valid factor", type=float)
-parser.add_argument("--invalid_factor", default=0.9, help="invalid factor", type=float)
+parser.add_argument("--valid_factor", default=2.0, help="valid factor", type=float)
+parser.add_argument("--invalid_factor", default=0.7, help="invalid factor", type=float)
 parser.add_argument("--valid_threshold", default=0.03,
                     help="valid_threshold  as outlier probability for classifying a field as valid", type=float)
 parser.add_argument("--invalid_threshold", default=0.08,

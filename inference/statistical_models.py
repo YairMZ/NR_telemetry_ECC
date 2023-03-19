@@ -290,7 +290,7 @@ class BufferModel:
             model._update()
         with open(filename, 'w') as f:
             json.dump({"field_models": self._field_models, "buffer_description": self._buffer_description,
-                       "window_size": self.window_size}, f,
+                       "window_size": self.window_size, "model_size": self.model_size}, f,
                       default=lambda o: o.hex() if isinstance(o, bytes) else o.__dict__, indent=4, sort_keys=True)
 
     @classmethod
@@ -300,6 +300,7 @@ class BufferModel:
             models = data.get("field_models")
             buffer_description = data.get("buffer_description")
             window_size = data.get("window_size")
+            model_size = data.get("model_size")
             obj = cls()
             for field_name, vals in models.items():
                 model = FieldModel(field_name, vals["field_type"], window_size=vals["window_size"])
@@ -312,6 +313,7 @@ class BufferModel:
                         buffer_description[i] = bytes.fromhex(val)
                 obj.set_buffer_description(buffer_description)
             obj.window_size = window_size
+            obj.model_size = model_size
             return obj
 
     def find_damaged_fields(self, error_indices: NDArray[np.int_], structure: dict[int, int], buffer_len: int) -> \

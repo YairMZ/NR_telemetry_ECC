@@ -197,8 +197,8 @@ class MavlinkRectifyingDecoder(Decoder):
             modified_llr *= factor
             modified_llr[bad_bits] *= invalid_factor
         else:
-            modified_llr[good_bits] *= valid_factor
-            modified_llr[bad_bits] *= invalid_factor
+            modified_llr[:len(good_bits)][good_bits] *= valid_factor
+            modified_llr[:len(bad_bits)][bad_bits] *= invalid_factor
 
         # find bits with valid model prediction of 0. These are bits that are wrong for sure and should be forced to the
         # model's value
