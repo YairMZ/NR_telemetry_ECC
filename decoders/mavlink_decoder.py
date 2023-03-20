@@ -94,7 +94,6 @@ class MavlinkRectifyingDecoder(Decoder):
             - decode_success is a boolean flag stating of the estimated_bits form a valid  code word
             - number of MAVLink messages found within buffer
         """
-        # TODO: add feedback loop
         channel_bits: NDArray[np.int_] = np.array(channel_llr < 0, dtype=np.int_)
         decoder_input = channel_llr.copy()
         all_iteration = 0
@@ -270,30 +269,3 @@ class MavlinkRectifyingDecoder(Decoder):
 
         return {"bits_confusion_matrix": bits_confusion_matrix,  # "fields_confusion_matrix": fields_confusion_matrix,
                 "flipping_confusion_matrix": flipping_confusion_matrix, "forcing_quality": forcing_quality}
-
-# decode_success = False
-# iterations_to_convergence = 0
-# for idx in range(self.segmentation_iterations):
-#     rectified_llr = self.model.predict(channel_input) if self.model is not None else channel_input
-#     estimate, llr, decode_success, iterations, syndrome, vnode_validity = self.ldpc_decoder.decode(channel_input,
-#                                                                                                    self.ldpc_iterations)
-#     iterations_to_convergence += iterations
-#     info_bytes = self.ldpc_decoder.info_bits(estimate).tobytes()
-#     parts, validity, structure = self.bs.segment_buffer(info_bytes)
-#     if decode_success:
-#         break
-#     good_bits = np.flatnonzero(np.repeat(parts != MsgParts.UNKNOWN, 8))
-#     if good_bits.size > 0 and idx < self.segmentation_iterations:
-#         n = channel_input.size
-#         bad_bits = n - good_bits.size
-#         bad_p = self.bad_p * n / bad_bits
-#         channel_input = bad_p(hard_channel_input)
-#         channel_input[good_bits] = self.good_p(estimate[good_bits])
-#         # for debug
-#         # o = np.array(channel_input[good_bits] < 0, dtype=np.int_)
-#         # new = np.array(estimate[good_bits] < 0, dtype=np.int_)
-#         # t = sum(new != o)
-#     else:
-#         break
-#
-# return estimate, llr, decode_success, iterations_to_convergence, len(structure)

@@ -4,10 +4,10 @@ import numpy as np
 from ldpc.encoder import EncoderWiFi
 from ldpc.wifi_spec_codes import WiFiSpecCode
 from ldpc.decoder import bsc_llr, DecoderWiFi
+from numpy.typing import NDArray
 from decoders import CombinedDecoder
-from inference import BufferSegmentation
+from inference import BufferSegmentation, BufferModel
 from protocol_meta import dialect_meta as meta
-import random
 from utils.bit_operations import hamming_distance
 from typing import Any
 import matplotlib.pyplot as plt
@@ -15,28 +15,38 @@ import argparse
 import datetime
 import os
 from multiprocessing import Pool
-
+from scipy.io import savemat
+import lzma
+import pandas as pd
+from utils import setup_logger
+import shutil
 
 parser = argparse.ArgumentParser(description='Run decoding on simulated data using multiprocessing.')
 parser.add_argument("--N", default=0, help="max number of transmissions to consider", type=int)
-parser.add_argument("--minflip", default=33*1e-3, help="minimal bit flip probability to consider", type=float)
-parser.add_argument("--maxflip", default=70*1e-3, help="maximal bit flip probability to consider", type=float)
+parser.add_argument("--minflip", default=33 * 1e-3, help="minimal bit flip probability to consider", type=float)
+parser.add_argument("--maxflip", default=70 * 1e-3, help="maximal bit flip probability to consider", type=float)
 parser.add_argument("--nflips", default=20, help="number of bit flips to consider", type=int)
 parser.add_argument("--ldpciterations", default=20, help="number of iterations of  LDPC decoder", type=int)
-parser.add_argument("--ent_threshold", default=0.36, help="entropy threshold to be used in entropy decoder", type=float)
-parser.add_argument("--window_len", default=50, help="number of previous samples to use, if 0 all are used", type=int)
-parser.add_argument("--clipping_factor", default=2, help="dictates maximal and minimal llr", type=int)
 parser.add_argument("--multiply_data", default=0, help="multiplies amount of buffers by 2 to power of arg", type=int)
 parser.add_argument("--processes", default=0, help="number of processes to spawn", type=int)
-parser.add_argument("--a_conf_center", default=20, help="center of a_model sigmoid", type=int)
-parser.add_argument("--a_conf_slope", default=0.35, help="slope of a_model sigmoid", type=float)
-parser.add_argument("--b_conf_center", default=40, help="center of b_model sigmoid", type=int)
-parser.add_argument("--b_conf_slope", default=0.35, help="slope of b_model sigmoid", type=float)
-parser.add_argument("--confidence", default=0, help="scheme for determining confidence", type=int)
-parser.add_argument("--feedback_iterations", default=3, help="number of exchanges between LDPC and CB decoder", type=int)
-parser.add_argument("--stable_factor", default=1.1, help="llr factor to use for stable data", type=float)
-parser.add_argument("--equal_iterations", default=1, help="llr factor to use for stable data", type=int)
-
+parser.add_argument("--dec_type", default="BP", help="scheme for determining confidence", type=str)
+parser.add_argument("--classifier_train", default=100, help="number of buffers used for classifier training", type=int)
+parser.add_argument("--n_clusters", default=1, help="number of clusters", type=int)
+parser.add_argument("--msg_delay", default="50000", help="sampling delay", type=str)
+parser.add_argument("--cluster", default=1, help="enable or disable clustering", type=int)
+parser.add_argument("--valid_factor", default=2.0, help="valid factor", type=float)
+parser.add_argument("--invalid_factor", default=0.7, help="invalid factor", type=float)
+parser.add_argument("--valid_threshold", default=0.03,
+                    help="valid_threshold  as outlier probability for classifying a field as valid", type=float)
+parser.add_argument("--invalid_threshold", default=0.08,
+                    help="invalid_threshold  as outlier probability for classifying a field as invalid", type=float)
+parser.add_argument("--window_len", default=50,
+                    help="number of previous samples to use for training the model, if 0 all are used", type=int)
+parser.add_argument("--learn", default=0, help="0 predefined mavlink model is used. 1 model is learned online", type=int)
+parser.add_argument("--conf_center", default=40, help="center of model sigmoid", type=int)
+parser.add_argument("--conf_slope", default=0.35, help="slope of model sigmoid", type=float)
+parser.add_argument("--ent_threshold", default=0.36, help="entropy threshold to be used in entropy decoder", type=float)
+parser.add_argument("--clipping_factor", default=2, help="dictates maximal and minimal llr", type=int)
 
 args = parser.parse_args()
 
@@ -44,190 +54,265 @@ ldpc_iterations = args.ldpciterations
 thr = args.ent_threshold
 clipping_factor = args.clipping_factor
 processes = args.processes if args.processes > 0 else None
-feedback_iterations = args.feedback_iterations
-
-encoder = EncoderWiFi(WiFiSpecCode.N1944_R23)
-bs = BufferSegmentation(meta.protocol_parser)
 
 with open('data/hc_to_ship.pickle', 'rb') as f:
     hc_tx = pickle.load(f)
 
-five_sec_bin = [Bits(auto=tx.get("bin")) for tx in hc_tx.get("50000")]
-n = args.N if args.N > 0 else len(five_sec_bin)
+hc_bin_data = [Bits(auto=tx.get("bin")) for tx in hc_tx.get(args.msg_delay)]
+n = args.N if args.N > 0 else len(hc_bin_data)
 window_len = args.window_len if args.window_len > 0 else None
 
-# corrupt data
 rng = np.random.default_rng()
 bit_flip_p = np.linspace(args.minflip, args.maxflip, num=args.nflips)
 
+if args.n_clusters == 1:
+    spec = WiFiSpecCode.N1944_R23
+    args.classifier_train = 0
+elif args.n_clusters == 2:
+    spec = WiFiSpecCode.N1296_R12
+elif args.n_clusters == 3:
+    spec = WiFiSpecCode.N648_R34
+else:
+    raise ValueError("Invalid number of clusters")
+encoder = EncoderWiFi(spec=spec)
 encoded = []
-for binary_data in five_sec_bin[:n]:
-    pad_len = encoder.k - len(binary_data)
-    padded = binary_data + Bits(uint=random.getrandbits(pad_len), length=pad_len)
-    encoded.append(encoder.encode(padded))
+for binary_data in hc_bin_data[:n]:
+    if args.n_clusters == 1:
+        pad_len = encoder.k - len(binary_data)
+        padded = binary_data + Bits(auto=rng.integers(low=0, high=2, size=pad_len))
+        encoded.append(encoder.encode(padded))
+    elif args.n_clusters == 2:
+        padded = binary_data[:576] + Bits(auto=rng.integers(low=0, high=2, size=encoder.k - 576))
+        encoded.extend((encoder.encode(padded), encoder.encode(binary_data[576:])))
+    elif args.n_clusters == 3:
+        padded = binary_data[:416] + Bits(auto=rng.integers(low=0, high=2, size=encoder.k - 416))
+        encoded.append(encoder.encode(padded))
+        padded = binary_data[416:864] + Bits(auto=rng.integers(low=0, high=2, size=encoder.k - (864 - 416)))
+        encoded.append(encoder.encode(padded))
+        padded = binary_data[864:] + Bits(auto=rng.integers(low=0, high=2, size=encoder.k - (1224 - 864)))
+        encoded.append(encoder.encode(padded))
 
 for _ in range(args.multiply_data):  # generate more buffers for statistical reproducibility
     encoded.extend(encoded)
-
-model_length = len(five_sec_bin[0])
 n = len(encoded)
+#{0: 33, 52: 234, 72: 30, 108: 212, 135: 218}
+data_model = None
+bs = BufferSegmentation(meta.protocol_parser)
+if args.n_clusters == 1:
+    _, _, buffer_structure = bs.segment_buffer(binary_data.tobytes())
+    buffer_structures = [buffer_structure]
+elif args.n_clusters == 2:
+    _, _, buffer_structure = bs.segment_buffer(binary_data[:576].tobytes())
+    buffer_structures = [buffer_structure]
+    _, _, buffer_structure = bs.segment_buffer(binary_data[576:].tobytes())
+    buffer_structures.append(buffer_structure)
+elif args.n_clusters == 3:
+    _, _, buffer_structure = bs.segment_buffer(binary_data[:416].tobytes())
+    buffer_structures = [buffer_structure]
+    _, _, buffer_structure = bs.segment_buffer(binary_data[416:864].tobytes())
+    buffer_structures.append(buffer_structure)
+    _, _, buffer_structure = bs.segment_buffer(binary_data[864:].tobytes())
+    buffer_structures.append(buffer_structure)
+else:
+    raise ValueError("n_clusters must be 1, 2 or 3")
+if not bool(args.learn):
+    data_model = BufferModel.load('data/model_2018_all.json')
 
+model_length = encoder.n
 # encoded structure: {starting byte index in buffer: msg_id}
 # {0: 33, 52: 234, 72: 30, 108: 212, 135: 218}
 # last 9 bytes (72 bits) are padding and not messages. Thus last message ends at byte index 152
 # bit indices:
 # {0: 33, 416: 234, 576: 30, 864: 212, 1080: 218}
 
-error_idx = np.vstack(
-    tuple(rng.choice(encoder.n, size=int(encoder.n * bit_flip_p[-1]), replace=False)
-     for _ in range(n))
-)
-plt.hist(error_idx.flatten(), 100)
-plt.show()
+logger = setup_logger(name=__file__, log_file=os.path.join("results/", 'log.log'))
 
-print(__file__)
-print("number of buffers to process: ", n)
-print("smallest bit flip probability: ", args.minflip)
-print("largest bit flip probability: ", args.maxflip)
-print("number of bit flips: ", args.nflips)
-print("number of ldpc decoder iterations: ", ldpc_iterations)
-print("entropy threshold used in entropy decoder:", thr)
-print("entropy decoder window length:", window_len)
-print("clipping factor:", clipping_factor)
-print("multiply data:", args.multiply_data)
-print("processes:", processes)
-print("a_model center:", args.a_conf_center)
-print("a_model slope:", args.a_conf_slope)
-print("b_model center:", args.b_conf_center)
-print("b_model slope:", args.b_conf_slope)
-print("confidence scheme:", args.confidence)
-print("number of feedback iterations: ", feedback_iterations)
-print("stable factor: ", args.stable_factor)
-print("equal iterations: ", args.equal_iterations)
-
-
-cmd = f'python {__file__} --minflip {args.minflip} --maxflip {args.maxflip} --nflips {args.nflips} --ldpciterations ' \
-      f'{ldpc_iterations} --ent_threshold {thr} --clipping_factor {clipping_factor} --a_conf_center ' \
-      f'{args.a_conf_center} --a_conf_slope {args.a_conf_slope} --b_conf_center {args.b_conf_center} --b_conf_slope ' \
-      f'{args.b_conf_slope} --confidence {args.confidence} --feedback_iterations {feedback_iterations} ' \
-      f'--stable_factor {args.stable_factor} --equal_iterations {args.equal_iterations}'
-
-if window_len is not None:
-    cmd += f' --window_len {window_len}'
-if args.N > 0:
-    cmd += f' --N {n}'
-if args.multiply_data > 0:
-    cmd += f' --multiply_data {args.multiply_data}'
-if processes is not None:
-    cmd += f' --processes {processes}'
 
 def simulation_step(p: float) -> dict[str, Any]:
     global ldpc_iterations
     global model_length
-    global thr
-    global clipping_factor
     global args
     global window_len
-    global error_idx
-    global feedback_iterations
+    global n
+    global spec
+    global data_model
+    global encoder
+    global buffer_structures
+    global logger
+    global thr
+    global clipping_factor
+
     channel = bsc_llr(p=p)
-    if args.equal_iterations == 1:
-        iter = (ldpc_iterations//feedback_iterations) + 1
-    else:
-        iter = ldpc_iterations
-    ldpc_decoder = DecoderWiFi(spec=WiFiSpecCode.N1944_R23, max_iter=ldpc_iterations)
-    combined_decoder = CombinedDecoder(DecoderWiFi(spec=WiFiSpecCode.N1944_R23, max_iter=iter),
-                                      model_length=model_length, entropy_threshold=thr, clipping_factor=clipping_factor,
-                                      feedback_iterations=feedback_iterations, stable_factor=args.stable_factor,
-                                      window_length=window_len, a_conf_center=args.a_conf_center,
-                                      a_conf_slope=args.a_conf_slope, b_conf_center=args.b_conf_center,
-                                      b_conf_slope=args.b_conf_slope, confidence=args.confidence)
+    ldpc_decoder = DecoderWiFi(spec=spec, max_iter=ldpc_iterations, decoder_type=args.dec_type)
+    nr_decoder = CombinedDecoder(DecoderWiFi(spec=spec, max_iter=ldpc_iterations,decoder_type=args.dec_type),
+                                 model_length, args.valid_threshold, args.invalid_threshold, args.n_clusters,
+                                 args.valid_factor, args.invalid_factor, thr, clipping_factor, args.classifier_train,
+                                 bool(args.cluster),window_len, data_model,args.conf_center, args.conf_slope, False, p)
+    nr_decoder.set_buffer_structures(buffer_structures)
     no_errors = int(encoder.n * p)
     rx = []
     decoded_ldpc = []
-    decoded_combined = []
-    errors = error_idx[:, :no_errors]
-    step_results: dict[str, Any] = {'data': five_sec_bin[:n]}
+    decoded_nr = []
+    errors = np.vstack(
+        tuple(rng.choice(encoder.n, size=no_errors, replace=False)
+              for _ in range(n))
+    )
+    step_results: dict[str, Any] = {'data': hc_bin_data[:n]}
+    good_fields_performance: NDArray[np.int_] = np.zeros((n, 6), dtype=np.int_)
+    bad_fields_performance: NDArray[np.int_] = np.zeros((n, 6), dtype=np.int_)
     for tx_idx in range(n):
         corrupted = BitArray(encoded[tx_idx])
-        for idx in errors[tx_idx]:
-            corrupted[idx] = not corrupted[idx]
+        corrupted.invert(errors[tx_idx])
         rx.append(corrupted)
         channel_llr = channel(np.array(corrupted, dtype=np.int_))
         d = ldpc_decoder.decode(channel_llr)
-        b = ldpc_decoder.info_bits(d[0]).tobytes()
-        parts, v, s = bs.segment_buffer(b)
-        decoded_ldpc.append((*d, len(s), hamming_distance(Bits(auto=d[0]), encoded[tx_idx])))
-        d = combined_decoder.decode_buffer(channel_llr)
-        decoded_combined.append((*d, hamming_distance(Bits(auto=d[0]), encoded[tx_idx])))
-        print("p= ", p, " tx id: ", tx_idx)
-    print("successful pure decoding for bit flip p=", p, ", is: ", sum(int(res[7] == 0) for res in decoded_ldpc), "/", n)
-    print("successful combined decoding for bit flip p=", p, ", is: ", sum(int(res[-1] == 0) for res in decoded_combined), "/",
-          n)
-    step_results['encoded'] = encoded
-    step_results['corrupted'] = rx
-    step_results['error_idx'] = errors
-    step_results['decoded_ldpc'] = decoded_ldpc
-    step_results["ldpc_buffer_success_rate"] = sum(int(res[7] == 0) for res in decoded_ldpc) / float(n)
+        decoded_ldpc.append((*d, hamming_distance(d[0], encoded[tx_idx])))
+        d = nr_decoder.decode_buffer(channel_llr, errors[tx_idx])
+        decoded_nr.append((*d, hamming_distance(d[0], encoded[tx_idx])))
+        logger.info(f"p= {p}, tx id: {tx_idx}")
+    pure_success = sum(int(r[-1] == 0) for r in decoded_ldpc)
+    nr_success = sum(int(r[-1] == 0) for r in decoded_nr)
+    logger.info(f"successful pure decoding for bit flip p= {p}, is: {pure_success}/{n}")
+    logger.info(f"successful nr decoding for bit flip p= {p}, is: {nr_success}/{n}")
+    if n-pure_success > 0:
+        logger.info(f"recover rate for bit flip p= {p}, is: {(nr_success-pure_success)/(n-pure_success)}")
+    else:
+        logger.info(f"recover rate for bit flip p= {p}, is: 0")
 
+    # log data
+    info_errors = np.sum(errors < encoder.k, axis=1)
+    parity_errors = np.sum(errors >= encoder.k, axis=1)
+    zipped = [[np.array(en, dtype=np.int_), np.array(r, dtype=np.int_), er, inf, pa] for en, r, er, inf, pa in
+              zip(encoded, rx, errors, info_errors, parity_errors)]
+    step_results["data"] = pd.DataFrame(zipped, columns=["encoded", "corrupted", "error_idx", "info_errors",
+                                                         "parity_errors"])
+
+    # params
     step_results["raw_ber"] = no_errors / encoder.n
     step_results["buffer_len"] = len(encoded[0])
-    step_results["ldpc_decoder_ber"] = sum(
-        hamming_distance(encoded[idx], Bits(auto=decoded_ldpc[idx][0]))
-        for idx in range(n)
-    ) / float(n * len(encoded[0]))
-
-    step_results["decoded_combined"] = decoded_combined
-    step_results["combined_buffer_success_rate"] = sum(int(res[-1] == 0) for res in decoded_combined) / float(n)
-    step_results["combined_decoder_ber"] = sum(
-        hamming_distance(encoded[idx], Bits(auto=decoded_combined[idx][0]))
-        for idx in range(n)
-    ) / float(n * len(encoded[0]))
-
-    step_results["n"] = n
+    step_results["number_of_buffers"] = n
     step_results["max_ldpc_iterations"] = ldpc_iterations
+
+    # decoding
+    decoded_nr_df = pd.DataFrame(decoded_nr,
+                                 columns=["estimate", "llr", "decode_success", "iterations", "cluster_label", "hamming"])
+    step_results["decoded_nr"] = decoded_nr_df
+    decoded_ldpc_df = pd.DataFrame(decoded_ldpc,
+                                   columns=["estimate", "llr", "decode_success", "iterations", "syndrome",
+                                            "vnode_validity", "hamming"])
+    step_results['decoded_ldpc'] = decoded_ldpc_df
+    # performance
+    step_results["ldpc_buffer_success_rate"] = sum(int(res[-1] == 0) for res in decoded_ldpc) / float(n)
+    step_results["ldpc_decoder_ber"] = sum(res[-1] for res in decoded_ldpc) / float(n * len(encoded[0]))
+    step_results["nr_buffer_success_rate"] = sum(int(res[-1] == 0) for res in decoded_nr) / float(n)
+    step_results["nr_decoder_ber"] = sum(res[-1] for res in decoded_nr) / float(n * len(encoded[0]))
 
     timestamp = f'{str(datetime.date.today())}_{str(datetime.datetime.now().hour)}_{str(datetime.datetime.now().minute)}_' \
                 f'{str(datetime.datetime.now().second)}'
-    with open(f'{timestamp}_{p}_simulation_combined.pickle', 'wb') as f:
+    with open(f'results/{timestamp}_{p}_simulation_classifying_nr.pickle', 'wb') as f:
         pickle.dump(step_results, f)
     return step_results
 
 
 if __name__ == '__main__':
-    with Pool(processes=processes) as pool:
-        results: list[dict[str, Any]] = pool.map(simulation_step, bit_flip_p)
-
     timestamp = f'{str(datetime.date.today())}_{str(datetime.datetime.now().hour)}_{str(datetime.datetime.now().minute)}_' \
                 f'{str(datetime.datetime.now().second)}'
 
     path = os.path.join("results/", timestamp)
+
+
+    logger.info(__file__)
+    logger.info(f"number of buffers to process: {n}")
+    logger.info(f"smallest bit flip probability: {args.minflip}")
+    logger.info(f"largest bit flip probability: {args.maxflip}")
+    logger.info(f"number of bit flips: {args.nflips}")
+    logger.info(f"number of ldpc decoder iterations: {ldpc_iterations}")
+    logger.info(f"processes: {args.processes}")
+    logger.info(f"multiply data: {args.multiply_data}")
+    logger.info(f"msg_delay: {args.msg_delay} ")
+    logger.info(f"decoder type: {args.dec_type}")
+    logger.info(f"classifier_train: {args.classifier_train}")
+    logger.info(f"n_clusters: {args.n_clusters}")
+    logger.info(f"cluster: {args.cluster}")
+    logger.info(f"valid_threshold used in decoder: {args.valid_threshold}")
+    logger.info(f"invalid_threshold used in decoder: {args.invalid_threshold}")
+    logger.info(f"valid_factor: {args.valid_factor}")
+    logger.info(f"invalid_factor: {args.invalid_factor}")
+    logger.info(f"decoder window length: {window_len}")
+    logger.info(f"confidence center: {args.conf_center}")
+    logger.info(f"confidence slope: {args.conf_slope}")
+    logger.info(f"learn: {args.learn}")
+    logger.info(f"entropy threshold: {thr}")
+    logger.info(f"clipping factor: {clipping_factor}")
+
+    cmd = f'python {__file__} --minflip {args.minflip} --maxflip {args.maxflip} --nflips {args.nflips}  ' \
+          f'--ldpciterations {ldpc_iterations} --multiply_data {args.multiply_data} ' \
+          f'--msg_delay {args.msg_delay} --dec_type {args.dec_type} --classifier_train {args.classifier_train} ' \
+          f'--n_clusters {args.n_clusters} --cluster {args.cluster} --valid_threshold {args.valid_threshold} ' \
+          f'--invalid_threshold {args.invalid_threshold} ' \
+          f'--valid_factor {args.valid_factor} --invalid_factor {args.invalid_factor} --conf_center {args.conf_center} ' \
+          f'--conf_slope {args.conf_slope} --learn {args.learn} --entropy_threshold {thr} --clipping_factor {clipping_factor}'
+    if args.N > 0:
+        cmd += f' --N {n}'
+    if window_len is not None:
+        cmd += f' --window_len {window_len}'
+    else:
+        cmd += ' --window_len 0'
+    if processes is not None:
+        cmd += f' --processes {processes}'
     os.mkdir(path)
-    with open(os.path.join(path, "cmd.txt"), 'wt') as f:
+    with open(os.path.join(path, "cmd.txt"), 'w') as f:
         f.write(cmd)
+    logger.info(cmd)
 
-    with open(os.path.join(path, timestamp + '_simulation_combined_vs_pure_LDPC.pickle'), 'wb') as f:
-        pickle.dump(results, f)
+    with Pool(processes=processes) as pool:
+        results: list[dict[str, Any]] = pool.map(simulation_step, bit_flip_p)
+    # results: list[dict[str, Any]] = list(map(simulation_step, bit_flip_p))
 
-    raw_ber = np.array([p['raw_ber'] for p in results])
-    ldpc_ber = np.array([p['ldpc_decoder_ber'] for p in results])
-    combined_ber = np.array([p['combined_decoder_ber'] for p in results])
-    fig = plt.figure()
-    plt.plot(raw_ber, ldpc_ber, 'bo', raw_ber, raw_ber, 'g^', raw_ber, combined_ber, 'r*')
-    plt.xlabel("BSC bit flip probability p")
-    plt.ylabel("post decoding BER")
-    fig.savefig(os.path.join(path, "ber_vs_error_p.eps"), dpi=150)
+    try:
+        with lzma.open(
+                os.path.join(path, f'{timestamp}_simulation_nr_{args.dec_type}_decoder_WiFi.xz'),
+                "wb") as f:
+            pickle.dump(results, f)
+        logger.info("saved compressed results file")
 
-    figure = plt.figure()
-    ldpc_buffer_success_rate = np.array([p['ldpc_buffer_success_rate'] for p in results])
-    combined_buffer_success_rate = np.array([p['combined_buffer_success_rate'] for p in results])
-    plt.plot(raw_ber, ldpc_buffer_success_rate, 'bo', raw_ber, combined_buffer_success_rate, 'r*')
-    plt.xlabel("BSC bit flip probability p")
-    plt.ylabel("Decode success rate")
-    figure.savefig(os.path.join(path, "buffer_success_rate_vs_error_p.eps"), dpi=150)
+        raw_ber = np.array([p['raw_ber'] for p in results])
+        ldpc_ber = np.array([p['ldpc_decoder_ber'] for p in results])
+        nr_ber = np.array([p['nr_decoder_ber'] for p in results])
+        fig = plt.figure()
+        plt.plot(raw_ber, ldpc_ber, 'bo', raw_ber, raw_ber, 'g^', raw_ber, nr_ber, 'r*')
+        plt.xlabel("BSC bit flip probability p")
+        plt.ylabel("post decoding BER")
+        fig.savefig(os.path.join(path, "ber_vs_error_p.eps"), dpi=150)
 
-    summary = {"args": args, "raw_ber": raw_ber, "ldpc_ber": ldpc_ber, "combined_ber": combined_ber,
-               "ldpc_buffer_success_rate": ldpc_buffer_success_rate,
-               "combined_buffer_success_rate": combined_buffer_success_rate}
-    with open(os.path.join(path, timestamp + '_summary_combined_vs_pure_LDPC.pickle'), 'wb') as f:
-        pickle.dump(summary, f)
+        figure = plt.figure()
+        ldpc_buffer_success_rate = np.array([p['ldpc_buffer_success_rate'] for p in results])
+        nr_buffer_success_rate = np.array([p['nr_buffer_success_rate'] for p in results])
+        plt.plot(raw_ber, ldpc_buffer_success_rate, 'bo', raw_ber, nr_buffer_success_rate, 'r*')
+        plt.xlabel("BSC bit flip probability p")
+        plt.ylabel("Decode success rate")
+        figure.savefig(os.path.join(path, "buffer_success_rate_vs_error_p.eps"), dpi=150)
+
+        logger.info("saved figures")
+        summary = {"args": args, "raw_ber": raw_ber, "ldpc_ber": ldpc_ber, "nr_ber": nr_ber,
+                   "ldpc_buffer_success_rate": ldpc_buffer_success_rate,
+                   "nr_buffer_success_rate": nr_buffer_success_rate}
+        with open(os.path.join(path, f'{timestamp}_summary_nr_{args.dec_type}_decoder_WiFi.pickle'), 'wb') as f:
+            pickle.dump(summary, f)
+        savemat(os.path.join(path, f'{timestamp}_summary_nr_{args.dec_type}_decoder_WiFi.mat'), summary)
+        logger.info("saved summary")
+
+        for step in results:
+            step['data'] = step['data'].to_dict("list")
+            step['decoded_nr'] = step['decoded_nr'].to_dict("list")
+            step['decoded_ldpc'] = step['decoded_ldpc'].to_dict("list")
+
+        summary["results"] = results
+        savemat(os.path.join(path, f'{timestamp}_simulation_nr_{args.dec_type}_decoder_WiFi.mat'),
+                summary, do_compression=True)
+        logger.info("saved results to mat file")
+        shutil.move("results/log.log", os.path.join(path, "log.log"))
+    except Exception as e:
+        logger.exception(e)
+        shutil.move("results/log.log", os.path.join(path, "log.log"))
+        raise e
