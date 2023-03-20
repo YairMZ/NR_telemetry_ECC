@@ -92,7 +92,7 @@ for binary_data in hc_bin_data[:n]:
 for _ in range(args.multiply_data):  # generate more buffers for statistical reproducibility
     encoded.extend(encoded)
 n = len(encoded)
-
+#{0: 33, 52: 234, 72: 30, 108: 212, 135: 218}
 if not bool(args.cluster):
     data_model = None
     bs = BufferSegmentation(meta.protocol_parser)
@@ -105,11 +105,11 @@ if not bool(args.cluster):
         _, _, buffer_structure = bs.segment_buffer(binary_data[576:].tobytes())
         buffer_structures.append(buffer_structure)
     elif args.n_clusters == 3:
-        _, _, buffer_structure = bs.segment_buffer(binary_data[:416])
+        _, _, buffer_structure = bs.segment_buffer(binary_data[:416].tobytes())
         buffer_structures = [buffer_structure]
-        _, _, buffer_structure = bs.segment_buffer(binary_data[416:864])
+        _, _, buffer_structure = bs.segment_buffer(binary_data[416:864].tobytes())
         buffer_structures.append(buffer_structure)
-        _, _, buffer_structure = bs.segment_buffer(binary_data[864:])
+        _, _, buffer_structure = bs.segment_buffer(binary_data[864:].tobytes())
         buffer_structures.append(buffer_structure)
     else:
         raise ValueError("n_clusters must be 1, 2 or 3")
@@ -170,8 +170,14 @@ def simulation_step(p: float) -> dict[str, Any]:
         d = rectify_decoder.decode_buffer(channel_llr, errors[tx_idx])
         decoded_rect.append((*d, hamming_distance(d[0], encoded[tx_idx])))
         logger.info(f"p= {p}, tx id: {tx_idx}")
-    logger.info(f"successful pure decoding for bit flip p= {p}, is: {sum(int(r[-1] == 0) for r in decoded_ldpc)}/{n}")
-    logger.info(f"successful rect decoding for bit flip p= {p}, is: {sum(int(r[-1] == 0) for r in decoded_rect)}/{n}")
+    pure_success = sum(int(r[-1] == 0) for r in decoded_ldpc)
+    rect_success = sum(int(r[-1] == 0) for r in decoded_rect)
+    logger.info(f"successful pure decoding for bit flip p= {p}, is: {pure_success}/{n}")
+    logger.info(f"successful rect decoding for bit flip p= {p}, is: {rect_success}/{n}")
+    if n-pure_success > 0:
+        logger.info(f"recover rate for bit flip p= {p}, is: {(rect_success-pure_success)/(n-pure_success)}")
+    else:
+        logger.info(f"recover rate for bit flip p= {p}, is: 0")
 
     # log data
     info_errors = np.sum(errors < encoder.k, axis=1)
