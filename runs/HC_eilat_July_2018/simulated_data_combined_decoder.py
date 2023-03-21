@@ -5,7 +5,7 @@ from ldpc.encoder import EncoderWiFi
 from ldpc.wifi_spec_codes import WiFiSpecCode
 from ldpc.decoder import bsc_llr, DecoderWiFi
 from numpy.typing import NDArray
-from decoders import CombinedDecoder
+from decoders import CombinedDecoder, ClassifyingEntropyDecoder, MavlinkRectifyingDecoder
 from inference import BufferSegmentation, BufferModel
 from protocol_meta import dialect_meta as meta
 from utils.bit_operations import hamming_distance
@@ -147,19 +147,31 @@ def simulation_step(p: float) -> dict[str, Any]:
     nr_decoder = CombinedDecoder(DecoderWiFi(spec=spec, max_iter=ldpc_iterations,decoder_type=args.dec_type),
                                  model_length, args.valid_threshold, args.invalid_threshold, args.n_clusters,
                                  args.valid_factor, args.invalid_factor, thr, clipping_factor, args.classifier_train,
-                                 bool(args.cluster),window_len, data_model,args.conf_center, args.conf_slope, False, p)
+                                 bool(args.cluster), window_len, data_model,args.conf_center, args.conf_slope, False, p)
+    entropy_decoder = ClassifyingEntropyDecoder(DecoderWiFi(spec=spec, max_iter=ldpc_iterations,decoder_type=args.dec_type),
+                                                model_length=model_length, entropy_threshold=thr,
+                                                clipping_factor=clipping_factor,classifier_training=args.classifier_train,
+                                                n_clusters=args.n_clusters, window_length=window_len,
+                                                conf_center=args.conf_center,
+                                                conf_slope=args.conf_slope, bit_flip=p, cluster=args.cluster)
+    rectify_decoder = MavlinkRectifyingDecoder(DecoderWiFi(spec=spec, max_iter=ldpc_iterations,decoder_type=args.dec_type),
+                                               model_length, args.valid_threshold, args.invalid_threshold,
+                                               args.n_clusters, args.valid_factor, args.invalid_factor,
+                                               args.classifier_train, bool(args.cluster), window_len,
+                                               data_model, args.conf_center, args.conf_slope, segmentation_iterations=1)
     nr_decoder.set_buffer_structures(buffer_structures)
+    rectify_decoder.set_buffer_structures(buffer_structures)
     no_errors = int(encoder.n * p)
     rx = []
     decoded_ldpc = []
     decoded_nr = []
+    decoded_entropy = []
+    decoded_rectify = []
     errors = np.vstack(
         tuple(rng.choice(encoder.n, size=no_errors, replace=False)
               for _ in range(n))
     )
     step_results: dict[str, Any] = {'data': hc_bin_data[:n]}
-    good_fields_performance: NDArray[np.int_] = np.zeros((n, 6), dtype=np.int_)
-    bad_fields_performance: NDArray[np.int_] = np.zeros((n, 6), dtype=np.int_)
     for tx_idx in range(n):
         corrupted = BitArray(encoded[tx_idx])
         corrupted.invert(errors[tx_idx])
@@ -169,15 +181,21 @@ def simulation_step(p: float) -> dict[str, Any]:
         decoded_ldpc.append((*d, hamming_distance(d[0], encoded[tx_idx])))
         d = nr_decoder.decode_buffer(channel_llr, errors[tx_idx])
         decoded_nr.append((*d, hamming_distance(d[0], encoded[tx_idx])))
+        d = entropy_decoder.decode_buffer(channel_llr)
+        decoded_entropy.append((*d, hamming_distance(d[0], encoded[tx_idx])))
+        d = rectify_decoder.decode_buffer(channel_llr, errors[tx_idx])
+        decoded_rectify.append((*d, hamming_distance(d[0], encoded[tx_idx])))
         logger.info(f"p= {p}, tx id: {tx_idx}")
     pure_success = sum(int(r[-1] == 0) for r in decoded_ldpc)
     nr_success = sum(int(r[-1] == 0) for r in decoded_nr)
+    entropy_success = sum(int(r[-1] == 0) for r in decoded_entropy)
+    rectify_success = sum(int(r[-1] == 0) for r in decoded_rectify)
     logger.info(f"successful pure decoding for bit flip p= {p}, is: {pure_success}/{n}")
     logger.info(f"successful nr decoding for bit flip p= {p}, is: {nr_success}/{n}")
+    logger.info(f"successful entropy decoding for bit flip p= {p}, is: {entropy_success}/{n}")
+    logger.info(f"successful rectify decoding for bit flip p= {p}, is: {rectify_success}/{n}")
     if n-pure_success > 0:
-        logger.info(f"recover rate for bit flip p= {p}, is: {(nr_success-pure_success)/(n-pure_success)}")
-    else:
-        logger.info(f"recover rate for bit flip p= {p}, is: 0")
+        logger.info(f"nr recovery rate for bit flip p= {p}, is: {(nr_success-pure_success)/(n-pure_success)}")
 
     # log data
     info_errors = np.sum(errors < encoder.k, axis=1)
@@ -194,22 +212,35 @@ def simulation_step(p: float) -> dict[str, Any]:
     step_results["max_ldpc_iterations"] = ldpc_iterations
 
     # decoding
-    decoded_nr_df = pd.DataFrame(decoded_nr,
-                                 columns=["estimate", "llr", "decode_success", "iterations", "cluster_label", "hamming"])
+    decoded_nr_df = pd.DataFrame(decoded_nr, columns=["estimate", "llr", "decode_success", "iterations", "cluster_label",
+                                                      "hamming"])
     step_results["decoded_nr"] = decoded_nr_df
-    decoded_ldpc_df = pd.DataFrame(decoded_ldpc,
-                                   columns=["estimate", "llr", "decode_success", "iterations", "syndrome",
-                                            "vnode_validity", "hamming"])
+    decoded_entropy_df = pd.DataFrame(decoded_entropy, columns=["estimate", "llr", "decode_success", "iterations", "syndrome",
+                                                                "vnode_validity", "dist", "structural_idx", "cluster_label",
+                                                                "hamming"])
+    decoded_rectify_df = pd.DataFrame(decoded_rectify,
+                                      columns=["estimate", "llr", "decode_success", "iterations", "syndrome",
+                                               "vnode_validity", "cluster_label", "segmented_bits", "good_field_idx",
+                                               "bad_field_idx", "classifier_performance", "forcing_performance",
+                                               "hamming"])
+    step_results["decoded_entropy"] = decoded_entropy_df
+    decoded_ldpc_df = pd.DataFrame(decoded_ldpc, columns=["estimate", "llr", "decode_success", "iterations", "syndrome",
+                                                          "vnode_validity", "hamming"])
+    step_results["decoded_rectify"] = decoded_rectify_df
     step_results['decoded_ldpc'] = decoded_ldpc_df
     # performance
     step_results["ldpc_buffer_success_rate"] = sum(int(res[-1] == 0) for res in decoded_ldpc) / float(n)
     step_results["ldpc_decoder_ber"] = sum(res[-1] for res in decoded_ldpc) / float(n * len(encoded[0]))
     step_results["nr_buffer_success_rate"] = sum(int(res[-1] == 0) for res in decoded_nr) / float(n)
     step_results["nr_decoder_ber"] = sum(res[-1] for res in decoded_nr) / float(n * len(encoded[0]))
+    step_results["entropy_buffer_success_rate"] = sum(int(res[-1] == 0) for res in decoded_entropy) / float(n)
+    step_results["entropy_decoder_ber"] = sum(res[-1] for res in decoded_entropy) / float(n * len(encoded[0]))
+    step_results["rectify_buffer_success_rate"] = sum(int(res[-1] == 0) for res in decoded_rectify) / float(n)
+    step_results["rectify_decoder_ber"] = sum(res[-1] for res in decoded_rectify) / float(n * len(encoded[0]))
 
     timestamp = f'{str(datetime.date.today())}_{str(datetime.datetime.now().hour)}_{str(datetime.datetime.now().minute)}_' \
                 f'{str(datetime.datetime.now().second)}'
-    with open(f'results/{timestamp}_{p}_simulation_classifying_nr.pickle', 'wb') as f:
+    with open(f'results/{timestamp}_{p}_simulation_nr.pickle', 'wb') as f:
         pickle.dump(step_results, f)
     return step_results
 
@@ -219,7 +250,6 @@ if __name__ == '__main__':
                 f'{str(datetime.datetime.now().second)}'
 
     path = os.path.join("results/", timestamp)
-
 
     logger.info(__file__)
     logger.info(f"number of buffers to process: {n}")
@@ -270,17 +300,20 @@ if __name__ == '__main__':
     # results: list[dict[str, Any]] = list(map(simulation_step, bit_flip_p))
 
     try:
-        with lzma.open(
-                os.path.join(path, f'{timestamp}_simulation_nr_{args.dec_type}_decoder_WiFi.xz'),
-                "wb") as f:
-            pickle.dump(results, f)
-        logger.info("saved compressed results file")
+        # with lzma.open(
+        #         os.path.join(path, f'{timestamp}_simulation_nr_{args.dec_type}_decoder_WiFi.xz'),
+        #         "wb") as f:
+        #     pickle.dump(results, f)
+        # logger.info("saved compressed results file")
 
         raw_ber = np.array([p['raw_ber'] for p in results])
         ldpc_ber = np.array([p['ldpc_decoder_ber'] for p in results])
         nr_ber = np.array([p['nr_decoder_ber'] for p in results])
+        entropy_ber = np.array([p['entropy_decoder_ber'] for p in results])
+        rectify_ber = np.array([p['rectify_decoder_ber'] for p in results])
         fig = plt.figure()
-        plt.plot(raw_ber, ldpc_ber, 'bo', raw_ber, raw_ber, 'g^', raw_ber, nr_ber, 'r*')
+        plt.plot(raw_ber, ldpc_ber, 'bo', raw_ber, raw_ber, 'g^', raw_ber, nr_ber, 'r*', raw_ber, entropy_ber, 'k+',
+                 raw_ber, rectify_ber, 'mD')
         plt.xlabel("BSC bit flip probability p")
         plt.ylabel("post decoding BER")
         fig.savefig(os.path.join(path, "ber_vs_error_p.eps"), dpi=150)
@@ -288,15 +321,21 @@ if __name__ == '__main__':
         figure = plt.figure()
         ldpc_buffer_success_rate = np.array([p['ldpc_buffer_success_rate'] for p in results])
         nr_buffer_success_rate = np.array([p['nr_buffer_success_rate'] for p in results])
-        plt.plot(raw_ber, ldpc_buffer_success_rate, 'bo', raw_ber, nr_buffer_success_rate, 'r*')
+        entropy_buffer_success_rate = np.array([p['entropy_buffer_success_rate'] for p in results])
+        rectify_buffer_success_rate = np.array([p['rectify_buffer_success_rate'] for p in results])
+        plt.plot(raw_ber, ldpc_buffer_success_rate, 'bo', raw_ber, nr_buffer_success_rate, 'r*', raw_ber,
+                 entropy_buffer_success_rate, 'k+', raw_ber, rectify_buffer_success_rate, 'mD')
         plt.xlabel("BSC bit flip probability p")
         plt.ylabel("Decode success rate")
         figure.savefig(os.path.join(path, "buffer_success_rate_vs_error_p.eps"), dpi=150)
 
         logger.info("saved figures")
-        summary = {"args": args, "raw_ber": raw_ber, "ldpc_ber": ldpc_ber, "nr_ber": nr_ber,
-                   "ldpc_buffer_success_rate": ldpc_buffer_success_rate,
-                   "nr_buffer_success_rate": nr_buffer_success_rate}
+        summary = {"args": args, "raw_ber": raw_ber, "ldpc_ber": ldpc_ber, "nr_ber": nr_ber, "entropy_ber": entropy_ber,
+                   "rectify_ber": rectify_ber, "ldpc_buffer_success_rate": ldpc_buffer_success_rate,
+                   "nr_buffer_success_rate": nr_buffer_success_rate,
+                   "entropy_buffer_success_rate": entropy_buffer_success_rate,
+                   "rectify_buffer_success_rate": rectify_buffer_success_rate
+                   }
         with open(os.path.join(path, f'{timestamp}_summary_nr_{args.dec_type}_decoder_WiFi.pickle'), 'wb') as f:
             pickle.dump(summary, f)
         savemat(os.path.join(path, f'{timestamp}_summary_nr_{args.dec_type}_decoder_WiFi.mat'), summary)
@@ -308,9 +347,9 @@ if __name__ == '__main__':
             step['decoded_ldpc'] = step['decoded_ldpc'].to_dict("list")
 
         summary["results"] = results
-        savemat(os.path.join(path, f'{timestamp}_simulation_nr_{args.dec_type}_decoder_WiFi.mat'),
-                summary, do_compression=True)
-        logger.info("saved results to mat file")
+        # savemat(os.path.join(path, f'{timestamp}_simulation_nr_{args.dec_type}_decoder_WiFi.mat'),
+        #         summary, do_compression=True)
+        # logger.info("saved results to mat file")
         shutil.move("results/log.log", os.path.join(path, "log.log"))
     except Exception as e:
         logger.exception(e)
