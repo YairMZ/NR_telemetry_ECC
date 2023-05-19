@@ -4,8 +4,8 @@ import lzma
 from scipy.io import savemat
 import os
 
-path = "/Users/yairmazal/google_drive/My Drive/University/PhD/NR_telemetry_ECC/runs/HC_eilat_July_2018/results/good_ones/" \
-       "classfying_decoder/ber_analysis/2022-07-31_21_9_14"
+path = "/Users/yairmazal/google_drive/My Drive/University/PhD/NR_telemetry_ECC/runs/HC_eilat_July_2018/results/AWGN/" \
+       "/two_decoders/2023-05-16_21_47_18"
 timestamp = path.split("/")[-1]
 dec_type = "BP"
 
@@ -17,7 +17,7 @@ with open(os.path.join(path, f'{timestamp}_summary_classifying_entropy__{dec_typ
 print("loaded summary")
 # load results
 # 2022-07-01_22_36_52_simulation_classifying_entropy_BP_decoder.xz
-with lzma.open(os.path.join(path, f'{timestamp}_simulation_classifying_entropy_{dec_type}_decoder.xz'), "rb") as f:
+with lzma.open(os.path.join(path, f'{timestamp}_simulation_AWGN_classifying_entropy_{dec_type}_decoder.xz'), "rb") as f:
     results = pickle.load(f)
 print("loaded results")
 for step in results:

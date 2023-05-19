@@ -13,7 +13,7 @@ class ClassifyingEntropyDecoder(Decoder):
     def __init__(self, ldpc_decoder: LogSpaDecoder, model_length: int, entropy_threshold: float, clipping_factor: float,
                  classifier_training: int, n_clusters: int,
                  window_length: Optional[int] = None, conf_center: int = 40, conf_slope: float = 0.35,
-                 bit_flip: float = 0, cluster: int = 1
+                 bit_flip: float = 0, cluster: int = 1, data_model: Optional[NDArray[np.float_]] = None
                  ) -> None:
         """
         Create a new decoder
@@ -34,8 +34,14 @@ class ClassifyingEntropyDecoder(Decoder):
             self.model_bits_idx = np.flatnonzero(self.model_bits_idx)  # bit indices (among codeword bits) of model bits
         self.clipping_factor = clipping_factor  # The model llr is clipped to +-clipping_factor * max_chanel_llr
 
-        self.distributions: list[NDArray[np.float_]] = [np.array([]) for _ in range(n_clusters)]
-        self.models_entropy: list[NDArray[np.float_]] = [np.array([]) for _ in range(n_clusters)]
+        if data_model is None:
+            self.distributions: list[NDArray[np.float_]] = [np.array([]) for _ in range(n_clusters)]
+            self.models_entropy: list[NDArray[np.float_]] = [np.array([]) for _ in range(n_clusters)]
+            self.train_models = True
+        else:
+            self.distributions = [data_model[:model_length,:] for _ in range(n_clusters)]
+            self.models_entropy = [entropy(self.distributions[cluster_id]) for cluster_id in range(n_clusters)]
+            self.train_models = False
         self.conf_center = conf_center
         self.conf_slope = conf_slope
         self.bit_flip = bit_flip
@@ -79,6 +85,12 @@ class ClassifyingEntropyDecoder(Decoder):
                 label = self.running_idx
         else:
             label = 0
+        # estimate, llr, decode_success, iterations, syndrome, vnode_validity = self.ldpc_decoder.decode(channel_llr)
+        # if decode_success:  # buffer fully recovered
+        #     model_bits = estimate[self.model_bits_idx]
+        #     self.update_model(model_bits, label)
+        #     return estimate, llr, decode_success, iterations, syndrome, vnode_validity, self.distributions[label], \
+        #         self.model_bits_idx[self.models_entropy[label] < self.entropy_threshold], label
         model_llr = self.model_prediction(channel_llr, label)  # type: ignore
         estimate, llr, decode_success, iterations, syndrome, vnode_validity = self.ldpc_decoder.decode(model_llr)
         model_bits = estimate[self.model_bits_idx]
@@ -93,6 +105,8 @@ class ClassifyingEntropyDecoder(Decoder):
         """update model of data. model_b uses any data regardless of correctness.
         :param bits: hard estimate for bit values, assumed to be correct.
         """
+        if not self.train_models:
+            return
         if len(bits) != self.model_length:
             print(self.model_length)
             print(len(bits))
@@ -127,10 +141,11 @@ class ClassifyingEntropyDecoder(Decoder):
 
         if not structural_elements.any():  # no structural elements found
             return llr
-
-        size = self.models_data[cluster_id].shape[1] if self.models_data[cluster_id].size > 0 else 0
-        confidence = model_confidence(size, self.conf_center, self.conf_slope)  # consider window size when setting these
-
+        if self.train_models:
+            size = self.models_data[cluster_id].shape[1] if self.models_data[cluster_id].size > 0 else 0
+            confidence = model_confidence(size, self.conf_center, self.conf_slope)  # consider window size when setting these
+        else:
+            confidence = 1
         clipping = self.clipping_factor * max(llr)  # llr s clipped within +-clipping
         # model llr is calculated as log(Pr(c=0 | model) / Pr(c=1| model))
         # add model llr to the observation
