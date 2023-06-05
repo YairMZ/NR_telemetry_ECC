@@ -87,7 +87,7 @@ class FieldModel:
         return norm.cdf(x, self._mean, self._std)
 
     def classify_value(self, value: float) -> tuple[float, float]:
-        """returns the probability that the value is not an outlier assuming a gaussian model"""
+        """returns the probability that the value is not an outlier assuming a gaussian model, and the standard deviation"""
         if not self._up2date:
             self._update()
         if self._std <= 0:
@@ -185,8 +185,10 @@ class BufferModel:
         """predicts the probability of bits originating from a valid (not an outlier) field
         :param buffer: the buffer to predict
         :param buffer_structure: a dictionary mapping the byte index in the buffer to the relevant mavlink message id
-        :return: probabilities of fields being valid (not an outlier). If bitwise is True, and array probabilities are for each
-        bit within the field, otherwise a list of tuples with filed name and valid probability.
+        :return: a tuple of (valid_field_probability, valid_bits_probability, bits_std)
+            - valid_field_probability: a list of tuples (field name, field valid probability, field standard deviation)
+            - valid_bits_probability: a numpy array of the probability of each bit originating from a valid field
+            - bits_std: a numpy array of the standard deviation of model for the field corresponding to each bit
         """
         if isinstance(buffer, bytes):
             length = len(buffer)

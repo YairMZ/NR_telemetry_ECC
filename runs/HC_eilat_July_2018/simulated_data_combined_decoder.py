@@ -5,7 +5,7 @@ from ldpc.encoder import EncoderWiFi
 from ldpc.wifi_spec_codes import WiFiSpecCode
 from ldpc.decoder import bsc_llr, DecoderWiFi
 from numpy.typing import NDArray
-from decoders import CombinedDecoder, ClassifyingEntropyDecoder, MavlinkRectifyingDecoder
+from decoders import CombinedDecoder, ClassifyingEntropyDecoder, MavlinkRectifyingDecoder, CombinedFlippingDecoder
 from inference import BufferSegmentation, BufferModel
 from protocol_meta import dialect_meta as meta
 from utils.bit_operations import hamming_distance
@@ -47,6 +47,7 @@ parser.add_argument("--conf_center", default=40, help="center of model sigmoid",
 parser.add_argument("--conf_slope", default=0.35, help="slope of model sigmoid", type=float)
 parser.add_argument("--ent_threshold", default=0.36, help="entropy threshold to be used in entropy decoder", type=float)
 parser.add_argument("--clipping_factor", default=2, help="dictates maximal and minimal llr", type=int)
+parser.add_argument("--flip", default=0, help="should flip or not", type=int)
 
 args = parser.parse_args()
 
@@ -144,10 +145,14 @@ def simulation_step(p: float) -> dict[str, Any]:
 
     channel = bsc_llr(p=p)
     ldpc_decoder = DecoderWiFi(spec=spec, max_iter=ldpc_iterations, decoder_type=args.dec_type)
-    nr_decoder = CombinedDecoder(DecoderWiFi(spec=spec, max_iter=ldpc_iterations,decoder_type=args.dec_type),
-                                 model_length, args.valid_threshold, args.invalid_threshold, args.n_clusters,
-                                 args.valid_factor, args.invalid_factor, thr, clipping_factor, args.classifier_train,
-                                 bool(args.cluster), window_len, data_model,args.conf_center, args.conf_slope, False, p)
+    nr_decoder = CombinedFlippingDecoder(DecoderWiFi(spec=spec, max_iter=ldpc_iterations,decoder_type=args.dec_type),
+                                         model_length=model_length, valid_thr=args.valid_threshold,
+                                         invalid_thr=args.invalid_threshold, n_clusters=args.n_clusters,
+                                         valid_factor=args.valid_factor, invalid_factor=args.invalid_factor,
+                                         entropy_threshold=thr, clipping_factor=clipping_factor,
+                                         classifier_training_size=args.classifier_train, cluster=bool(args.cluster),
+                                         window_length=window_len, data_model=data_model, conf_center=args.conf_center,
+                                         conf_slope=args.conf_slope, debug=True, bit_flip=p, flip=bool(args.flip))
     entropy_decoder = ClassifyingEntropyDecoder(DecoderWiFi(spec=spec, max_iter=ldpc_iterations,decoder_type=args.dec_type),
                                                 model_length=model_length, entropy_threshold=thr,
                                                 clipping_factor=clipping_factor,classifier_training=args.classifier_train,
@@ -274,6 +279,7 @@ if __name__ == '__main__':
     logger.info(f"learn: {args.learn}")
     logger.info(f"entropy threshold: {thr}")
     logger.info(f"clipping factor: {clipping_factor}")
+    logger.info(f"flip: {args.flip}")
 
     cmd = f'python {__file__} --minflip {args.minflip} --maxflip {args.maxflip} --nflips {args.nflips}  ' \
           f'--ldpciterations {ldpc_iterations} --multiply_data {args.multiply_data} ' \
@@ -281,7 +287,8 @@ if __name__ == '__main__':
           f'--n_clusters {args.n_clusters} --cluster {args.cluster} --valid_threshold {args.valid_threshold} ' \
           f'--invalid_threshold {args.invalid_threshold} ' \
           f'--valid_factor {args.valid_factor} --invalid_factor {args.invalid_factor} --conf_center {args.conf_center} ' \
-          f'--conf_slope {args.conf_slope} --learn {args.learn} --entropy_threshold {thr} --clipping_factor {clipping_factor}'
+          f'--conf_slope {args.conf_slope} --learn {args.learn} --ent_threshold {thr} --clipping_factor {clipping_factor} ' \
+          f'--flip {args.flip}'
     if args.N > 0:
         cmd += f' --N {n}'
     if window_len is not None:
