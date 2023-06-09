@@ -29,9 +29,9 @@ def confusion(predicted_positive: ArrayLike, actual_positive: NDArray[np.int_], 
                     dtype=np.int_)
 
 
-class CombinedFlippingDecoder(Decoder):
+class CombinedUnifiedDecoder(Decoder):
     """
-    This decoder combines the classifying decoder and the segmentation decoder, and applies bit flipping to some bytes
+    This decoder combines the classifying decoder and the MAVLink decoder
     """
 
     def __init__(self, ldpc_decoder: LogSpaDecoder, model_length: int,
@@ -182,15 +182,15 @@ class CombinedFlippingDecoder(Decoder):
             model_size = self.entropy_models_data[cluster_id].shape[1] if self.entropy_models_data[cluster_id].size > 0 else 0
             if model_size > self.conf_center:
                 # rectify "good" bits, but first verify that they are predicted to have low entropy
-                good_bits = good_bits & (self.models_entropy[cluster_id] < self.entropy_threshold)
+                good_bits = good_bits[:self.model_length] & (self.models_entropy[cluster_id] < self.entropy_threshold)
                 modified_llr[:len(good_bits)][good_bits] *= valid_factor
 
                 # find bits to flip. Look for "bad" bits with low entropy
-                bad_bits = bad_bits & (self.models_entropy[cluster_id] < self.entropy_threshold)
+                bad_bits = bad_bits[:self.model_length] & (self.models_entropy[cluster_id] < self.entropy_threshold)
                 # bad bits now contain steady bits of damaged fields, but some of them might be correct.
                 # compare to estimated value of received data.
                 estimated_noiseless = np.around(self.distributions[cluster_id][:, 1]).astype(np.bool_)
-                bad_bits = (estimated_noiseless ^ np.array(observation < 0, dtype=np.bool_)) & bad_bits
+                bad_bits = (estimated_noiseless ^ np.array(observation < 0, dtype=np.bool_)[:self.model_length]) & bad_bits
                 #  rectify or flip bad bits, depending on the sign of invalid_factor
                 flip = -1 if self.flip is True else 1
                 modified_llr[:len(bad_bits)][bad_bits] *= invalid_factor * flip
@@ -272,7 +272,7 @@ class CombinedFlippingDecoder(Decoder):
         return {"bits_confusion_matrix": bits_confusion_matrix,  # "fields_confusion_matrix": fields_confusion_matrix,
                 "flipping_confusion_matrix": flipping_confusion_matrix, "forcing_quality": forcing_quality}
 
-    def decode_buffer(self, channel_llr: NDArray[np.float_], error_idx: NDArray[np.int_]) -> Any:
+    def decode_buffer(self, channel_llr: NDArray[np.float_], error_idx: NDArray[np.int_] = None) -> Any:
         channel_bits: NDArray[np.int_] = np.array(channel_llr < 0, dtype=np.int_)
         decoder_input = channel_llr.copy()
         if self.n_clusters > 1:
@@ -296,7 +296,7 @@ class CombinedFlippingDecoder(Decoder):
         bad_bits: NDArray[np.int_]
         decoder_input, good_bits, bad_bits, good_fields_idx, bad_fields_idx, n_fields, forced_bits, \
             segmented_bits = self.mavlink_model_prediction(decoder_input, label)
-        if self.debug:
+        if self.debug and error_idx is not None:
             classifier_performance = self.classifier_analysis(good_fields_idx, bad_fields_idx, error_idx, n_fields,
                                                               label)
             forcing_performance = self.forcing_analysis(forced_bits, error_idx, channel_bits, label)
@@ -322,7 +322,7 @@ class CombinedFlippingDecoder(Decoder):
                 elif self.buffer_structures[label] is not None:  # update model from channel if data is bad
                     self.model.add_buffer(channel_bits, self.buffer_structures[label])
             if decode_success:  # buffer fully recovered
-                self.update_entropy_model(estimate, label)
+                self.update_entropy_model(estimate[:self.model_length], label)
             else:  # update model from channel if data is bad
-                self.update_entropy_model(channel_bits, label)
+                self.update_entropy_model(channel_bits[:self.model_length], label)
         return estimate, llr, decode_success, iterations, label

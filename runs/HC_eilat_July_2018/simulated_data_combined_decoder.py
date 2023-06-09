@@ -5,7 +5,7 @@ from ldpc.encoder import EncoderWiFi
 from ldpc.wifi_spec_codes import WiFiSpecCode
 from ldpc.decoder import bsc_llr, DecoderWiFi
 from numpy.typing import NDArray
-from decoders import CombinedDecoder, ClassifyingEntropyDecoder, MavlinkRectifyingDecoder, CombinedFlippingDecoder
+from decoders import CombinedDecoder, ClassifyingEntropyDecoder, MavlinkRectifyingDecoder, CombinedUnifiedDecoder
 from inference import BufferSegmentation, BufferModel
 from protocol_meta import dialect_meta as meta
 from utils.bit_operations import hamming_distance
@@ -145,14 +145,14 @@ def simulation_step(p: float) -> dict[str, Any]:
 
     channel = bsc_llr(p=p)
     ldpc_decoder = DecoderWiFi(spec=spec, max_iter=ldpc_iterations, decoder_type=args.dec_type)
-    nr_decoder = CombinedFlippingDecoder(DecoderWiFi(spec=spec, max_iter=ldpc_iterations,decoder_type=args.dec_type),
-                                         model_length=model_length, valid_thr=args.valid_threshold,
-                                         invalid_thr=args.invalid_threshold, n_clusters=args.n_clusters,
-                                         valid_factor=args.valid_factor, invalid_factor=args.invalid_factor,
-                                         entropy_threshold=thr, clipping_factor=clipping_factor,
-                                         classifier_training_size=args.classifier_train, cluster=bool(args.cluster),
-                                         window_length=window_len, data_model=data_model, conf_center=args.conf_center,
-                                         conf_slope=args.conf_slope, debug=True, bit_flip=p, flip=bool(args.flip))
+    nr_decoder = CombinedUnifiedDecoder(DecoderWiFi(spec=spec, max_iter=ldpc_iterations, decoder_type=args.dec_type),
+                                        model_length=model_length, valid_thr=args.valid_threshold,
+                                        invalid_thr=args.invalid_threshold, n_clusters=args.n_clusters,
+                                        valid_factor=args.valid_factor, invalid_factor=args.invalid_factor,
+                                        entropy_threshold=thr, clipping_factor=clipping_factor,
+                                        classifier_training_size=args.classifier_train, cluster=bool(args.cluster),
+                                        window_length=window_len, data_model=data_model, conf_center=args.conf_center,
+                                        conf_slope=args.conf_slope, debug=True, bit_flip=p, flip=bool(args.flip))
     entropy_decoder = ClassifyingEntropyDecoder(DecoderWiFi(spec=spec, max_iter=ldpc_iterations,decoder_type=args.dec_type),
                                                 model_length=model_length, entropy_threshold=thr,
                                                 clipping_factor=clipping_factor,classifier_training=args.classifier_train,

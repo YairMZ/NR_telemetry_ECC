@@ -329,13 +329,16 @@ class BufferModel:
         """
         bit_2_val_idx, ordered_field_names, _ = self.unpack_structure(True, buffer_len, structure)
         ordered_field_names = [(name, i) for i, name in enumerate(ordered_field_names)]
-        return [
-            (
-                ordered_field_names[bit_2_val_idx[error]]
-            )
-            for error in np.sort(error_indices)
-            if bit_2_val_idx[error] >= 0
-        ]
+        try:
+            return [
+                (
+                    ordered_field_names[bit_2_val_idx[error]]
+                )
+                for error in np.sort(error_indices)
+                if error < len(bit_2_val_idx) and bit_2_val_idx[error] >= 0  # if codeword is too long, ignore end
+            ]
+        except IndexError:
+            pass
 
     def add_buffer(self, buffer: bytes | NDArray[np.int_], structure: dict[int, int]) -> None:
         """add observations to the model

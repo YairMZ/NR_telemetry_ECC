@@ -112,7 +112,7 @@ logger.info(f"msg_type: {args.msg_type}")
 
 cmd = f'python {__file__} --ldpciterations {ldpc_iterations}  --learn {args.learn} --segiterations {args.segiterations} ' \
       f'--valid_factor {args.valid_factor} --invalid_factor {args.invalid_factor} --valid_threshold {args.valid_threshold} ' \
-      f'--invalid_threshold {args.invalid_threshold} --window_len {window_len} --conf_center {args.conf_center} ' \
+      f'--invalid_threshold {args.invalid_threshold} --conf_center {args.conf_center} ' \
       f'--conf_slope {args.conf_slope} --dec_type {args.dec_type} --experiment_date {args.experiment_date} ' \
       f'--msg_type {args.msg_type}'
 if window_len is not None:
