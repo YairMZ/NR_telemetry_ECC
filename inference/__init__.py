@@ -4,5 +4,6 @@ from .buffer_segmentation import MsgParts, BufferStructure, BufferSegmentation
 from .clustering import Cluster, BufferClassifier
 from .bmm import BMM
 from .dude import OnlineDude, DUDE
+from .entropy_mle import EMLE
 __all__: list[str] = ["MsgParts", "BufferStructure", "BufferSegmentation", "Cluster", "BufferClassifier", "FieldModel",
-                      "BufferModel", "BMM", "OnlineDude", "DUDE"]
+                      "BufferModel", "BMM", "OnlineDude", "DUDE", "EMLE"]

@@ -12,6 +12,7 @@ class DecoderType(Enum):
     MAVLINK = auto()
     COMBINED = auto()
     CLASSIFYING = auto()
+    DUDE = auto()
 
 
 class Decoder(ABC):

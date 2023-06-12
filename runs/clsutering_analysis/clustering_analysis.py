@@ -7,9 +7,10 @@ import numpy as np
 from sklearn.model_selection import train_test_split
 from inference import BufferClassifier, BMM
 from scipy.io import savemat
-from functions import relabel, stats
+from functions import relabel
 from multiprocessing import Pool
 from utils import setup_logger
+from utils.performance_analysis import stats
 
 
 parser = argparse.ArgumentParser()

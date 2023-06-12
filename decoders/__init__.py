@@ -4,7 +4,8 @@ from .entropy_bitwise_decoder import EntropyBitwiseDecoder, EntropyBitwiseFlippi
 from .mavlink_decoder import MavlinkRectifyingDecoder
 from .combined_decoder import CombinedDecoder
 from .classifiying_decoder import ClassifyingEntropyDecoder
-from .combined_flipping_decoder import CombinedUnifiedDecoder
+from .combined_unified_decoder import CombinedUnifiedDecoder
+from .classifying_DUDE_decoder import ClassifyingDudeDecoder
 __all__: list[str] = ["Decoder", "DecoderType", "EntropyBitwiseDecoder", "EntropyBitwiseFlippingDecoder",
                       "MavlinkRectifyingDecoder", "CombinedDecoder", "EntropyBitwiseWeightedDecoder",
-                      "ClassifyingEntropyDecoder", "CombinedUnifiedDecoder"]
+                      "ClassifyingEntropyDecoder", "CombinedUnifiedDecoder", "ClassifyingDudeDecoder"]

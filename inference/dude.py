@@ -23,7 +23,7 @@ class OnlineDude:
         self.k = k
         self.alphabet_size = alphabet_size
         self.contexts = {}
-        self._last_context: tuple[int, ...] = None
+        self._last_context: tuple[int, ...] = ()
         self.hard_decision = hard_decision
 
     def denoise_sample(self, observation: int):
@@ -31,14 +31,18 @@ class OnlineDude:
         :param observation: a list of observations
         :return: a list of states
         """
-        if self._last_context is None:
-            raise RuntimeError("Must initially set context before denoising")
         if observation not in range(self.alphabet_size):
             raise ValueError(f"Observation must be in the range 0 to {self.alphabet_size - 1}")
+        if len(self._last_context) < self.k:
+            # update the context
+            self._last_context += (observation,)
+            if self.hard_decision:
+                return observation, 0
+            else:
+                return np.reshape(np.eye(self.alphabet_size)[observation],(1,-1)), 0
         if self._last_context not in self.contexts:
             self.contexts[self._last_context] = np.zeros(self.alphabet_size)
         self.contexts[self._last_context][observation] += 1
-
         empirical_p = self.contexts[self._last_context][np.newaxis]
         # update the context
         self._last_context = self._last_context[1:] + (observation,)
@@ -65,13 +69,10 @@ class OnlineDude:
         """
         if self.hard_decision:
             estimates = np.zeros_like(observations)
-            estimates[:self.k] = observations[:self.k]
         else:
             estimates = np.zeros((len(observations), self.alphabet_size))
-            estimates[:self.k] = np.eye(self.alphabet_size)[observations[:self.k]]
         costs = np.zeros_like(observations,dtype=np.float_)
-        self.initial_context(tuple(observations[:self.k]))
-        for i in range(self.k, len(observations)):
+        for i in range(len(observations)):
             estimates[i], costs[i] = self.denoise_sample(observations[i])
         return estimates, costs
 
@@ -104,7 +105,7 @@ class OnlineDude:
 
     def reset(self) -> None:
         """Resets the context"""
-        self._last_context = None
+        self._last_context = ()
         self.contexts = {}
 
 
