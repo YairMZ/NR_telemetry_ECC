@@ -8,7 +8,6 @@ import json
 import matplotlib.pyplot as plt
 
 
-
 parser = argparse.ArgumentParser(description='Run decoding on simulated data using multiprocessing.')
 parser.add_argument("--n_clusters", default=1, help="number of clusters", type=int)
 args = parser.parse_args()

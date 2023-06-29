@@ -3,7 +3,6 @@ from bitstring import Bits, BitArray
 import numpy as np
 from inference import BufferClassifier
 from scipy.io import savemat
-import os
 
 
 with open('../runs/HC_eilat_July_2018/data/hc_to_ship.pickle', 'rb') as f:
@@ -52,7 +51,7 @@ savemat(f"n_classes_{n_classes}_clustering_data.mat",
 for idx, b in enumerate(buffers):
     actual_classes[idx] = b[1]
     labels[idx] = classifier.classify(b[0])
-result_1 = [np.unique(labels[n_training - 1 + i :: n_classes], return_counts=True) for i in range(n_classes)]
+result_1 = [np.unique(labels[n_training - 1 + i : : n_classes], return_counts=True) for i in range(n_classes)]
 
 # option 2: use rate 3/4 with N=648, k=486, and three classes of buffers
 buffers = []

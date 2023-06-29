@@ -10,3 +10,4 @@ exclude =
     *.m
     mavlink_utils/
     *__init__.py
+    analysis/

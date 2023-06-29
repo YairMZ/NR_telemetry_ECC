@@ -40,7 +40,7 @@ class TurboDecoder(Decoder):
             second_decoder_prior = llr1 - channel_word - first_decoder_prior  # update prior, since we don't use an
             # interleaver, extrinsic information is the same as the prior
             second_decoder_output = self.second_decoder.decode(second_decoder_prior + channel_word.copy())
-            estimate2, llr2, not decode_success2 = second_decoder_output[:3]
+            estimate2, llr2, decode_success2 = second_decoder_output[:3]
             if decode_success2: # early exit
                 return estimate2, llr2, decode_success2, 2, 0
             first_decoder_prior = llr2 - channel_word - second_decoder_prior  # update prior, since we don't use an

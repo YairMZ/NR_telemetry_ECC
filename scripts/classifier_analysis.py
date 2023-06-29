@@ -277,7 +277,6 @@ def simulation_step(p: float) -> dict[str, Any]:
         corrupted.invert(errors[tx_idx])
         corrupted = np.array(corrupted, dtype=np.int_)
         rx.append(corrupted)
-        channel_llr = channel(corrupted)
 
         # predict
         valid_field_p, valid_bits_p, bits_field_std = data_model.predict(corrupted, buffer_structures[running_idx])
@@ -345,7 +344,6 @@ def simulation_step(p: float) -> dict[str, Any]:
 
     return step_results
 
-
 if __name__ == '__main__':
     timestamp = f'{str(datetime.date.today())}_{str(datetime.datetime.now().hour)}_{str(datetime.datetime.now().minute)}_' \
                 f'{str(datetime.datetime.now().second)}'
@@ -396,7 +394,7 @@ if __name__ == '__main__':
         forced_fields_performance = np.array([p['forced_fields_performance'].sum(axis=0) for p in results])
         forced_bits_performance = np.array([p['forced_bits_performance'].sum(axis=0) for p in results])
         forcing_quality = np.array([p['forcing_quality'].sum(axis=0) for p in results])
-        forcing_quality[:,-1] = forcing_quality[:, -1] / n
+        forcing_quality[:, -1] = forcing_quality[:, -1] / n
         flipped_bits_performance = np.array([p['flipped_bits_performance'].sum(axis=0) for p in results])
         # fig = plt.figure()
         # plt.plot(raw_ber, ldpc_ber, 'bo', raw_ber, raw_ber, 'g^', raw_ber, rect_ber, 'r*')

@@ -7,7 +7,7 @@ n = 10**5
 channel_transition_matrix = np.array([[1-bit_flip_p, bit_flip_p], [bit_flip_p, 1-bit_flip_p]])
 loss_matrix = np.array([[0, 1], [1, 0]])
 window_length = 50
-thr=0.36
+thr = 0.36
 
 k = int(0.5*np.log2(n))
 online_dude = OnlineDude(channel_transition_matrix, loss_matrix, k, hard_decision=True)
@@ -31,8 +31,6 @@ print(f"DUDE errors: {np.sum(estimates != sequence)}")
 estimates, costs = emle.denoise_sequence(np.reshape(sequence, (n, 1)))
 emle.reset()
 print(f"EMLE errors: {np.sum(estimates.flatten() != sequence)}")
-
-
 
 
 # Now actually add noise to the sequence
