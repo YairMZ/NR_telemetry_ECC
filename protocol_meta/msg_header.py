@@ -30,7 +30,8 @@ def is_valid_header(buffer: bytes) -> bool:
     # buffer[0] stx
     # buffer[5]  msg_id
     # buffer[1]  msg_len
-    return buffer[0] == meta.stx and buffer[5] in meta.msgs_payload_length.keys() and meta.msgs_payload_length.get(buffer[5]) == buffer[1]
+    return buffer[0] == meta.stx and buffer[5] in meta.msgs_payload_length.keys() and meta.msgs_payload_length.get(
+        buffer[5]) == buffer[1]
 
 
 def hamming_distance_2_valid_header(buffer: bytes, max_len: Optional[int] = None) -> tuple[int, int]:

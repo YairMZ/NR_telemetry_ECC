@@ -4,7 +4,6 @@ import numpy as np
 from ldpc.encoder import EncoderWiFi
 from ldpc.wifi_spec_codes import WiFiSpecCode
 from ldpc.decoder import bsc_llr, DecoderWiFi
-from numpy.typing import NDArray
 from decoders import MavlinkRectifyingDecoder
 from inference import BufferSegmentation, BufferModel
 from protocol_meta import dialect_meta as meta
@@ -92,7 +91,7 @@ for binary_data in hc_bin_data[:n]:
 for _ in range(args.multiply_data):  # generate more buffers for statistical reproducibility
     encoded.extend(encoded)
 n = len(encoded)
-#{0: 33, 52: 234, 72: 30, 108: 212, 135: 218}
+# {0: 33, 52: 234, 72: 30, 108: 212, 135: 218}
 if not bool(args.cluster):
     data_model = None
     bs = BufferSegmentation(meta.protocol_parser)
@@ -139,7 +138,7 @@ def simulation_step(p: float) -> dict[str, Any]:
     global logger
 
     channel = bsc_llr(p=p)
-    ldpc_decoder = DecoderWiFi(spec=spec, max_iter=args.segiterations*ldpc_iterations, decoder_type=args.dec_type)
+    ldpc_decoder = DecoderWiFi(spec=spec, max_iter=args.segiterations * ldpc_iterations, decoder_type=args.dec_type)
     rectify_decoder = MavlinkRectifyingDecoder(DecoderWiFi(spec=spec, max_iter=ldpc_iterations,
                                                            decoder_type=args.dec_type),
                                                model_length, args.valid_threshold, args.invalid_threshold,
@@ -158,8 +157,8 @@ def simulation_step(p: float) -> dict[str, Any]:
               for _ in range(n))
     )
     step_results: dict[str, Any] = {'data': hc_bin_data[:n]}
-    good_fields_performance: NDArray[np.int_] = np.zeros((n, 6), dtype=np.int_)
-    bad_fields_performance: NDArray[np.int_] = np.zeros((n, 6), dtype=np.int_)
+    # good_fields_performance: NDArray[np.int_] = np.zeros((n, 6), dtype=np.int_)
+    # bad_fields_performance: NDArray[np.int_] = np.zeros((n, 6), dtype=np.int_)
     for tx_idx in range(n):
         corrupted = BitArray(encoded[tx_idx])
         corrupted.invert(errors[tx_idx])
@@ -174,8 +173,8 @@ def simulation_step(p: float) -> dict[str, Any]:
     rect_success = sum(int(r[-1] == 0) for r in decoded_rect)
     logger.info(f"successful pure decoding for bit flip p= {p}, is: {pure_success}/{n}")
     logger.info(f"successful rect decoding for bit flip p= {p}, is: {rect_success}/{n}")
-    if n-pure_success > 0:
-        logger.info(f"recover rate for bit flip p= {p}, is: {(rect_success-pure_success)/(n-pure_success)}")
+    if n - pure_success > 0:
+        logger.info(f"recover rate for bit flip p= {p}, is: {(rect_success - pure_success) / (n - pure_success)}")
     else:
         logger.info(f"recover rate for bit flip p= {p}, is: 0")
 

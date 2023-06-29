@@ -75,8 +75,7 @@ n = len(encoded)
 # {0: 33, 416: 234, 576: 30, 864: 212, 1080: 218}
 
 error_idx = np.vstack(
-    tuple(rng.choice(encoder.n, size=int(encoder.n * bit_flip_p[-1]), replace=False)
-     for _ in range(n))
+    tuple(rng.choice(encoder.n, size=int(encoder.n * bit_flip_p[-1]), replace=False) for _ in range(n))
 )
 plt.hist(error_idx.flatten(), 100)
 plt.show()
@@ -112,6 +111,7 @@ if args.multiply_data > 0:
     cmd += f' --multiply_data {args.multiply_data}'
 if processes is not None:
     cmd += f' --processes {processes}'
+
 
 def simulation_step(p: float) -> dict[str, Any]:
     global ldpc_iterations
@@ -189,15 +189,16 @@ if __name__ == '__main__':
         with Pool(processes=processes) as pool:
             results: list[dict[str, Any]] = pool.map(simulation_step, bit_flip_p)
 
-        timestamp = f'{str(datetime.date.today())}_{str(datetime.datetime.now().hour)}_{str(datetime.datetime.now().minute)}_' \
-                    f'{str(datetime.datetime.now().second)}'
+        timestamp = f'{str(datetime.date.today())}_{str(datetime.datetime.now().hour)}_' \
+                    f'{str(datetime.datetime.now().minute)}_{str(datetime.datetime.now().second)}'
 
         path = os.path.join("results/", timestamp)
         os.mkdir(path)
         with open(os.path.join(path, "cmd.txt"), 'w') as f:
             f.write(cmd)
 
-        with open(os.path.join(path, f'iteration_{run_idx}_time_{timestamp}_simulation_entropy_vs_pure_LDPC_weighted_model.pickle'), 'wb') as f:
+        with open(os.path.join(path, f'iteration_{run_idx}_time_{timestamp}_'
+                                     f'simulation_entropy_vs_pure_LDPC_weighted_model.pickle'), 'wb') as f:
             pickle.dump(results, f)
 
         raw_ber = np.array([p['raw_ber'] for p in results])
@@ -220,9 +221,11 @@ if __name__ == '__main__':
         summary = {"args": args, "raw_ber": raw_ber, "ldpc_ber": ldpc_ber, "entropy_ber": entropy_ber,
                    "ldpc_buffer_success_rate": ldpc_buffer_success_rate,
                    "entropy_buffer_success_rate": entropy_buffer_success_rate}
-        with open(os.path.join(path, f'iteration_{run_idx}_time_{timestamp}_summary_entropy_vs_pure_LDPC_weighted_model.pickle'), 'wb') as f:
+        with open(os.path.join(path, f'iteration_{run_idx}_time_{timestamp}'
+                                     f'_summary_entropy_vs_pure_LDPC_weighted_model.pickle'), 'wb') as f:
             pickle.dump(summary, f)
         overall_stats.append(summary)
 
-    with open(os.path.join("results/", f'overall_stats_{timestamp}' + '_summary_entropy_vs_pure_LDPC_weighted_model.pickle'), 'wb') as f:
+    with open(os.path.join("results/", f'overall_stats_{timestamp}' +
+                                       '_summary_entropy_vs_pure_LDPC_weighted_model.pickle'), 'wb') as f:
         pickle.dump(overall_stats, f)

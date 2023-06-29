@@ -82,7 +82,7 @@ class MavlinkRectifyingDecoder(Decoder):
 
     def decode_buffer(self, channel_llr: NDArray[np.float_], error_idx: NDArray[np.int_]) -> \
             tuple[NDArray[np.int_], NDArray[np.float_], bool, int, NDArray[np.int_], NDArray[np.int_], int, NDArray[np.bool_],
-            list[int], list[int], dict[str,Any], dict[str,Any]]:
+            list[int], list[int], dict[str, Any], dict[str, Any]]:
         """decodes a buffer
 
         :param channel_llr: bits to decode
@@ -116,10 +116,10 @@ class MavlinkRectifyingDecoder(Decoder):
             forced_bits: NDArray[np.int_]
             good_bits: NDArray[np.int_]
             bad_bits: NDArray[np.int_]
-            decoder_input, good_bits, bad_bits, good_fields_idx, bad_fields_idx, n_fields, forced_bits,\
+            decoder_input, good_bits, bad_bits, good_fields_idx, bad_fields_idx, n_fields, forced_bits, \
                 segmented_bits = self.model_prediction(decoder_input, label)
-            estimate, decoder_input, decode_success, iterations, syndrome, vnode_validity, label = self.decode_and_update_model(
-                decoder_input, label, channel_bits)
+            estimate, decoder_input, decode_success, iterations, syndrome, vnode_validity, \
+                label = self.decode_and_update_model(decoder_input, label, channel_bits)
             all_iteration += iterations
             if decode_success:
                 break
@@ -131,7 +131,7 @@ class MavlinkRectifyingDecoder(Decoder):
             classifier_performance = {}
             forcing_performance = {}
 
-        return estimate, decoder_input, decode_success, all_iteration, syndrome, vnode_validity, label,\
+        return estimate, decoder_input, decode_success, all_iteration, syndrome, vnode_validity, label, \
             segmented_bits, good_fields_idx, bad_fields_idx, classifier_performance, forcing_performance
 
     def decode_and_update_model(self, llr, label, channel_bits) -> tuple[
@@ -159,7 +159,9 @@ class MavlinkRectifyingDecoder(Decoder):
         self.buffer_structures = buffer_structures
 
     def model_prediction(self, observation: NDArray[np.float_], cluster_id: int) -> \
-            tuple[NDArray[np.float_], NDArray[np.bool_], NDArray[np.bool_], list[int], list[int], int, NDArray[np.int_], NDArray[np.bool_]]:
+            tuple[
+                NDArray[np.float_], NDArray[np.bool_], NDArray[np.bool_], list[int], list[int], int, NDArray[np.int_], NDArray[
+                    np.bool_]]:
         """rectifies the observation using the model
 
         :param observation: observation to rectify
@@ -224,7 +226,7 @@ class MavlinkRectifyingDecoder(Decoder):
                 print("found segmentation")
                 # multiply by 2 for confidence
 
-        return modified_llr, good_bits, bad_bits, good_fields_idx, bad_fields_idx, len(valid_field_p), forced_bits,\
+        return modified_llr, good_bits, bad_bits, good_fields_idx, bad_fields_idx, len(valid_field_p), forced_bits, \
             np.pad(valid_info_bits, (0, len(modified_llr) - len(valid_info_bits))).astype(np.bool_)
 
     def classifier_analysis(self, good_fields_idx, bad_fields_idx, error_idx, n_fields_in_buffer, label=0) -> dict[str, Any]:
@@ -248,13 +250,13 @@ class MavlinkRectifyingDecoder(Decoder):
         #     return {}
         # damaged_fields = np.array(tuple({field[1] for field in damaged}))
         buffer_len_bits = len(rx)
-        bits_confusion_matrix = confusion(forced_bits, error_idx, buffer_len_bits-len(error_idx))
+        bits_confusion_matrix = confusion(forced_bits, error_idx, buffer_len_bits - len(error_idx))
         # forced_fields = np.array([idx for idx, vfp in enumerate(valid_field_p) if (vfp[1] <= 0 and vfp[2] == 0)],
         #                          dtype=np.int_)
         # fields_confusion_matrix = confusion(forced_fields, damaged_fields,len(valid_field_p))
         model_bits = self.model.bitwise_model_mean(forced_bits, buffer_len_bits // 8, self.buffer_structures[label])
         bits_flipped_from_forced = forced_bits[(model_bits ^ rx[forced_bits]).astype(np.bool_)]
-        flipping_confusion_matrix = confusion(bits_flipped_from_forced, error_idx, buffer_len_bits-len(error_idx))
+        flipping_confusion_matrix = confusion(bits_flipped_from_forced, error_idx, buffer_len_bits - len(error_idx))
         n_bits_flipped = bits_flipped_from_forced.size
         errors_bool = np.zeros(rx.shape, dtype=np.bool_)
         errors_bool[error_idx] = True

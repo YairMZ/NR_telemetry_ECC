@@ -11,3 +11,6 @@ exclude =
     mavlink_utils/
     *__init__.py
     analysis/
+    runs/HC_eilat_July_2018/analysis/
+    scripts/load_results.py
+    scripts/unify_results.py

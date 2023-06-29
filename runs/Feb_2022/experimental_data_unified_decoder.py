@@ -42,7 +42,6 @@ ldpc_iterations = args.ldpciterations
 thr = args.ent_threshold
 clipping_factor = args.clipping_factor
 
-
 if args.experiment_date == 'all':
     tx = np.genfromtxt('data/feb_14_tx.csv', dtype=np.uint8, delimiter=',')
     rx = np.genfromtxt('data/feb_14_llr.csv', dtype=np.float_, delimiter=',')
@@ -57,7 +56,7 @@ else:
 
 k = 984
 bs = BufferSegmentation(meta.protocol_parser)
-_, _, buffer_structure = bs.segment_buffer(np.packbits(tx[0, :k]).tobytes()) # segment first buffer to get structure
+_, _, buffer_structure = bs.segment_buffer(np.packbits(tx[0, :k]).tobytes())  # segment first buffer to get structure
 h = AList.from_file("spec/4098_3095_non_sys_h.alist")
 number_of_messages, n = rx.shape
 window_len = args.window_len if args.window_len > 0 else None
@@ -112,7 +111,7 @@ try:
     nr_decoder = CombinedUnifiedDecoder(LogSpaDecoder(h=h.to_sparse(), max_iter=args.ldpciterations,
                                                       decoder_type=args.dec_type,
                                                       info_idx=np.array(
-                                                           [True] * k + [False] * (n - k))),
+                                                          [True] * k + [False] * (n - k))),
                                         model_length=model_length, valid_thr=args.valid_threshold,
                                         invalid_thr=args.invalid_threshold, n_clusters=1,
                                         valid_factor=args.valid_factor, invalid_factor=args.invalid_factor,
@@ -167,7 +166,7 @@ try:
 
     # decoding
     decoded_nr_df = pd.DataFrame(decoded_nr,
-                                   columns=["estimate", "llr", "decode_success", "iterations", "cluster_label", "hamming"])
+                                 columns=["estimate", "llr", "decode_success", "iterations", "cluster_label", "hamming"])
     results["decoded_nr"] = decoded_nr_df
     decoded_ldpc_df = pd.DataFrame(decoded_ldpc,
                                    columns=["estimate", "llr", "decode_success", "iterations", "syndrome",

@@ -12,7 +12,6 @@ from multiprocessing import Pool
 from utils import setup_logger
 from utils.performance_analysis import stats
 
-
 parser = argparse.ArgumentParser()
 parser.add_argument("--n_classes", default=3, type=int)
 parser.add_argument("--p", default=0.07, type=float)
@@ -48,34 +47,35 @@ def analyze(run_idx: int):
     rng = np.random.default_rng()
     if n_classes == 2:
         n = 1296
-        r = 1/2
+        r = 1 / 2
     elif n_classes == 3:
         n = 648
         r = 3 / 4
     else:
         raise ValueError("n_classes must be 2 or 3")
 
-    k = int(n*r)
+    k = int(n * r)
     tx = np.genfromtxt("telemetry_hc_tx_info_bits_2023.csv", delimiter=",", dtype=np.uint8)
     n_buffers, real_info_bits_per_buffer = tx.shape
-    no_errors = int(k*p)
+    no_errors = int(k * p)
 
     # break down to buffers
-    buffers = np.empty((n_buffers*n_classes, k), dtype=np.bool_)
-    actual_classes = np.empty(n_buffers*n_classes, dtype=np.uint8)
-    pad_len = k - real_info_bits_per_buffer//n_classes
+    buffers = np.empty((n_buffers * n_classes, k), dtype=np.bool_)
+    actual_classes = np.empty(n_buffers * n_classes, dtype=np.uint8)
+    pad_len = k - real_info_bits_per_buffer // n_classes
     for tx_idx, tx in enumerate(tx):
         for class_idx in range(n_classes):
-            buffers[tx_idx*n_classes + class_idx] = np.hstack(
-                    (tx[class_idx*real_info_bits_per_buffer//n_classes:(class_idx+1)*real_info_bits_per_buffer//n_classes],
-                        rng.integers(low=0, high=2, size=pad_len))
-                )  # pad with random bits
+            buffers[tx_idx * n_classes + class_idx] = np.hstack(
+                (tx[
+                 class_idx * real_info_bits_per_buffer // n_classes:(class_idx + 1) * real_info_bits_per_buffer // n_classes],
+                 rng.integers(low=0, high=2, size=pad_len))
+            )  # pad with random bits
             if no_errors > 0 and (train_with_errors or tx_idx >= n_training):
-                errors = rng.choice(k//n_classes, size=no_errors//n_classes, replace=False)
+                errors = rng.choice(k // n_classes, size=no_errors // n_classes, replace=False)
                 errors_bool = np.zeros(k, dtype=np.bool_)
                 errors_bool[errors] = True
                 buffers[tx_idx * n_classes + class_idx] = np.bitwise_xor(buffers[tx_idx * n_classes + class_idx], errors_bool)
-            actual_classes[tx_idx*n_classes + class_idx] = class_idx
+            actual_classes[tx_idx * n_classes + class_idx] = class_idx
 
     if shuffle:
         X_train, X_test, y_train, y_test = train_test_split(
@@ -96,14 +96,16 @@ def analyze(run_idx: int):
     bmm.fit(X_train)
     logger.info(f"Run {run_idx}, BMM training done")
     bmm_predictions = bmm.predict(X_test)
-    relabeled_bmm_predictions, l_map = relabel(bmm_predictions, n_classes,y_test)
+    relabeled_bmm_predictions, l_map = relabel(bmm_predictions, n_classes, y_test)
     bmm_stats = stats(y_test, relabeled_bmm_predictions)
     logger.info(f"Run {run_idx}, BMM done, accuracy {bmm_stats[-1]:.3f}")
     return clustering_stats, bmm_stats
 
+
 if __name__ == "__main__":
     try:
-        timestamp = f'{str(datetime.date.today())}_{str(datetime.datetime.now().hour)}_{str(datetime.datetime.now().minute)}_' \
+        timestamp = f'{str(datetime.date.today())}_{str(datetime.datetime.now().hour)}_' \
+                    f'{str(datetime.datetime.now().minute)}_' \
                     f'{str(datetime.datetime.now().second)}'
 
         path = os.path.join("results/", timestamp)
@@ -118,7 +120,7 @@ if __name__ == "__main__":
         if n_jobs == 1:
             results: list[Any] = [analyze(idx) for idx in range(number_of_runs)]
         else:
-            with Pool(processes=n_jobs if n_jobs>0 else None) as pool:
+            with Pool(processes=n_jobs if n_jobs > 0 else None) as pool:
                 results = pool.map(analyze, range(number_of_runs))
         clustering_results = [t[0] for t in results]
         clustering_cm = np.round(np.array([t[0] for t in clustering_results]).mean(axis=0)).astype(np.int_)
@@ -130,22 +132,22 @@ if __name__ == "__main__":
 
         savemat(os.path.join(path, f'{timestamp}_{n_classes}classes_{p}p_{n_training}training_train_with_'
                                    f'errors{int(train_with_errors)}_shuffle{shuffle}_clustering_results.mat'), {
-            "classified_buffers": np.sum(clustering_cm),
-            "p": p,
-            "n_training": n_training,
-            "n_classes": n_classes,
-            "train_with_errors": train_with_errors,
-            "clustering_cm": clustering_cm,
-            "clustering_recall": clustering_recall,
-            "clustering_precision": clustering_precision,
-            "clustering_f1": clustering_f1,
-            "clustering_accuracy": clustering_accuracy,
-            "bmm_cm": bmm_cm,
-            "bmm_recall": bmm_recall,
-            "bmm_precision": bmm_precision,
-            "bmm_f1": bmm_f1,
-            "bmm_accuracy": bmm_accuracy
-        })
+                    "classified_buffers": np.sum(clustering_cm),
+                    "p": p,
+                    "n_training": n_training,
+                    "n_classes": n_classes,
+                    "train_with_errors": train_with_errors,
+                    "clustering_cm": clustering_cm,
+                    "clustering_recall": clustering_recall,
+                    "clustering_precision": clustering_precision,
+                    "clustering_f1": clustering_f1,
+                    "clustering_accuracy": clustering_accuracy,
+                    "bmm_cm": bmm_cm,
+                    "bmm_recall": bmm_recall,
+                    "bmm_precision": bmm_precision,
+                    "bmm_f1": bmm_f1,
+                    "bmm_accuracy": bmm_accuracy
+                })
         logger.info("saved results to mat file")
         shutil.move("results/log.log", os.path.join(path, "log.log"))
     except Exception as e:

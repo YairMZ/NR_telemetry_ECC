@@ -2,7 +2,6 @@ from inference import BufferSegmentation, BufferModel
 from protocol_meta import dialect_meta as meta
 import numpy as np
 
-
 tx = np.genfromtxt('data/feb_14_tx.csv', dtype=np.uint8, delimiter=',')
 temp = np.genfromtxt('data/feb_16_tx.csv', dtype=np.uint8, delimiter=',')
 tx = np.vstack((tx, temp))

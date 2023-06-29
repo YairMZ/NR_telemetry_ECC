@@ -36,7 +36,7 @@ class CombinedUnifiedDecoder(Decoder):
 
     def __init__(self, ldpc_decoder: LogSpaDecoder, model_length: int,
                  valid_thr: float, invalid_thr: float, n_clusters: int,
-                 valid_factor: float,  invalid_factor: float,
+                 valid_factor: float, invalid_factor: float,
                  entropy_threshold: float, clipping_factor: float,
                  classifier_training_size: int | None = None,
                  cluster: bool = True, window_length: int | None = None, data_model: BufferModel | None = None,
@@ -100,7 +100,8 @@ class CombinedUnifiedDecoder(Decoder):
         # add model llr to the observation
         if confidence > 0:
             llr = confidence * np.log(
-                (np.finfo(np.float_).eps + self.distributions[cluster_id][:, 0]) / (self.distributions[cluster_id][:, 1] + np.finfo(np.float_).eps)
+                (np.finfo(np.float_).eps + self.distributions[cluster_id][:, 0]) / (
+                            self.distributions[cluster_id][:, 1] + np.finfo(np.float_).eps)
             )[self.models_entropy[cluster_id] < self.entropy_threshold]
             return llr, structural_elements
 
@@ -119,7 +120,7 @@ class CombinedUnifiedDecoder(Decoder):
         if (self.window_length is not None) and self.entropy_models_data[cluster_id].shape[1] > self.window_length:
             # trim old messages according to window
             self.entropy_models_data[cluster_id] = self.entropy_models_data[cluster_id][
-                                           :, self.entropy_models_data[cluster_id].shape[1] - self.window_length:]
+                                                   :, self.entropy_models_data[cluster_id].shape[1] - self.window_length:]
         dist = prob(self.entropy_models_data[cluster_id])
         v = dist[:, 1]
         p1 = np.clip((v - self.bit_flip) / (1 - 2 * self.bit_flip), 0, 1)
@@ -141,7 +142,9 @@ class CombinedUnifiedDecoder(Decoder):
         self.buffer_structures = buffer_structures
 
     def mavlink_model_prediction(self, observation: NDArray[np.float_], cluster_id: int) -> \
-            tuple[NDArray[np.float_], NDArray[np.bool_], NDArray[np.bool_], list[int], list[int], int, NDArray[np.int_], NDArray[np.bool_]]:
+            tuple[
+                NDArray[np.float_], NDArray[np.bool_], NDArray[np.bool_], list[int], list[int], int, NDArray[np.int_], NDArray[
+                    np.bool_]]:
         """rectifies the observation of good bits, and flips bad bits
 
         :param observation: observation to rectify
@@ -174,7 +177,7 @@ class CombinedUnifiedDecoder(Decoder):
         use_soft_rectification = False
         if use_soft_rectification:
             factor = np.ones(observation.shape, dtype=np.float_)
-            factor[good_bits] = 2*valid_bits_p[good_bits]
+            factor[good_bits] = 2 * valid_bits_p[good_bits]
             # factor += (valid_bits_p - 0.5) * 2 * (valid_factor - 1)
             modified_llr *= factor
             modified_llr[bad_bits] *= invalid_factor
@@ -226,7 +229,7 @@ class CombinedUnifiedDecoder(Decoder):
                 print("found segmentation")
                 # multiply by 2 for confidence
 
-        return modified_llr, good_bits, bad_bits, good_fields_idx, bad_fields_idx, len(valid_field_p), forced_bits,\
+        return modified_llr, good_bits, bad_bits, good_fields_idx, bad_fields_idx, len(valid_field_p), forced_bits, \
             np.pad(valid_info_bits, (0, len(modified_llr) - len(valid_info_bits))).astype(np.bool_)
 
     def classifier_analysis(self, good_fields_idx, bad_fields_idx, error_idx, n_fields_in_buffer, label=0) -> dict[str, Any]:
@@ -250,13 +253,13 @@ class CombinedUnifiedDecoder(Decoder):
         #     return {}
         # damaged_fields = np.array(tuple({field[1] for field in damaged}))
         buffer_len_bits = len(rx)
-        bits_confusion_matrix = confusion(forced_bits, error_idx, buffer_len_bits-len(error_idx))
+        bits_confusion_matrix = confusion(forced_bits, error_idx, buffer_len_bits - len(error_idx))
         # forced_fields = np.array([idx for idx, vfp in enumerate(valid_field_p) if (vfp[1] <= 0 and vfp[2] == 0)],
         #                          dtype=np.int_)
         # fields_confusion_matrix = confusion(forced_fields, damaged_fields,len(valid_field_p))
         model_bits = self.model.bitwise_model_mean(forced_bits, buffer_len_bits // 8, self.buffer_structures[label])
         bits_flipped_from_forced = forced_bits[(model_bits ^ rx[forced_bits]).astype(np.bool_)]
-        flipping_confusion_matrix = confusion(bits_flipped_from_forced, error_idx, buffer_len_bits-len(error_idx))
+        flipping_confusion_matrix = confusion(bits_flipped_from_forced, error_idx, buffer_len_bits - len(error_idx))
         n_bits_flipped = bits_flipped_from_forced.size
         errors_bool = np.zeros(rx.shape, dtype=np.bool_)
         errors_bool[error_idx] = True

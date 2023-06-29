@@ -17,11 +17,10 @@ import pandas as pd
 from utils import setup_logger
 import shutil
 
-
 parser = argparse.ArgumentParser(description='Run decoding on simulated data using multiprocessing.')
 parser.add_argument("--N", default=0, help="max number of transmissions to consider", type=int)
-parser.add_argument("--minflip", default=2*1e-2, help="minimal bit flip probability to consider", type=float)
-parser.add_argument("--maxflip", default=40*1e-2, help="maximal bit flip probability to consider", type=float)
+parser.add_argument("--minflip", default=2 * 1e-2, help="minimal bit flip probability to consider", type=float)
+parser.add_argument("--maxflip", default=40 * 1e-2, help="maximal bit flip probability to consider", type=float)
 parser.add_argument("--nflips", default=20, help="number of bit flips to consider", type=int)
 parser.add_argument("--ldpciterations", default=60, help="number of iterations of  LDPC decoder", type=int)
 parser.add_argument("--ent_threshold", default=0.36, help="entropy threshold to be used in entropy decoder", type=float)
@@ -62,7 +61,6 @@ n = len(encoded)  # redfine n
 
 logger = setup_logger(name=__file__, log_file=os.path.join("results/", 'log.log'))
 
-
 cmd = f'python {__file__} --minflip {args.minflip} --maxflip {args.maxflip} --nflips {args.nflips} --ldpciterations ' \
       f'{ldpc_iterations} --ent_threshold {thr} --clipping_factor {clipping_factor} --conf_center {args.conf_center} ' \
       f'--conf_slope {args.conf_slope} --multiply_data {args.multiply_data} --dec_type {args.dec_type} ' \
@@ -79,6 +77,7 @@ if processes is not None:
 
 h = AList.from_file("spec/4098_3095_non_sys_h.alist")
 
+
 def simulation_step(p: float) -> dict[str, Any]:
     global ldpc_iterations
     global model_length
@@ -93,7 +92,7 @@ def simulation_step(p: float) -> dict[str, Any]:
     global logger
     channel = bsc_llr(p=p)
     ldpc_decoder = LogSpaDecoder(h=h.to_array(), max_iter=ldpc_iterations, decoder_type=args.dec_type,
-                             info_idx=np.array([True] * k + [False] * (word_len - k)))
+                                 info_idx=np.array([True] * k + [False] * (word_len - k)))
     entropy_decoder = ClassifyingEntropyDecoder(
         LogSpaDecoder(h=h.to_array(), max_iter=ldpc_iterations, decoder_type=args.dec_type, info_idx=np.array(
             [True] * k + [False] * (word_len - k))),
@@ -234,7 +233,7 @@ if __name__ == '__main__':
         savemat(os.path.join(path, f'{timestamp}_simulation_rafael_code.mat'),
                 summary, do_compression=True)
         logger.info("saved results to mat file")
-        shutil.move("results/log.log",os.path.join(path, "log.log"))
+        shutil.move("results/log.log", os.path.join(path, "log.log"))
     except Exception as e:
         logger.exception(e)
         shutil.move("results/log.log", os.path.join(path, "log.log"))

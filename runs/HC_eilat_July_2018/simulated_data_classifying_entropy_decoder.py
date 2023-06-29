@@ -16,11 +16,10 @@ from scipy.io import savemat
 import lzma
 import pandas as pd
 
-
 parser = argparse.ArgumentParser(description='Run decoding on simulated data using multiprocessing.')
 parser.add_argument("--N", default=0, help="max number of transmissions to consider", type=int)
-parser.add_argument("--minflip", default=33*1e-3, help="minimal bit flip probability to consider", type=float)
-parser.add_argument("--maxflip", default=70*1e-3, help="maximal bit flip probability to consider", type=float)
+parser.add_argument("--minflip", default=33 * 1e-3, help="minimal bit flip probability to consider", type=float)
+parser.add_argument("--maxflip", default=70 * 1e-3, help="maximal bit flip probability to consider", type=float)
 parser.add_argument("--nflips", default=20, help="number of bit flips to consider", type=int)
 parser.add_argument("--ldpciterations", default=20, help="number of iterations of  LDPC decoder", type=int)
 parser.add_argument("--ent_threshold", default=0.36, help="entropy threshold to be used in entropy decoder", type=float)
@@ -70,15 +69,15 @@ for binary_data in hc_bin_data[:n]:
         padded = binary_data + Bits(auto=rng.integers(low=0, high=2, size=pad_len))
         encoded.append(encoder.encode(padded))
     elif args.n_clusters == 2:
-        padded = binary_data[:576] + Bits(auto=rng.integers(low=0, high=2, size=encoder.k-576))
+        padded = binary_data[:576] + Bits(auto=rng.integers(low=0, high=2, size=encoder.k - 576))
         encoded.append(encoder.encode(padded))
         encoded.append(encoder.encode(binary_data[576:]))
     elif args.n_clusters == 3:
-        padded = binary_data[:416] + Bits(auto=rng.integers(low=0, high=2, size=encoder.k-416))
+        padded = binary_data[:416] + Bits(auto=rng.integers(low=0, high=2, size=encoder.k - 416))
         encoded.append(encoder.encode(padded))
-        padded = binary_data[416:864] + Bits(auto=rng.integers(low=0, high=2, size=encoder.k - (864-416)))
+        padded = binary_data[416:864] + Bits(auto=rng.integers(low=0, high=2, size=encoder.k - (864 - 416)))
         encoded.append(encoder.encode(padded))
-        padded = binary_data[864:] + Bits(auto=rng.integers(low=0, high=2, size=encoder.k - (1224-864)))
+        padded = binary_data[864:] + Bits(auto=rng.integers(low=0, high=2, size=encoder.k - (1224 - 864)))
         encoded.append(encoder.encode(padded))
 
 for _ in range(args.multiply_data):  # generate more buffers for statistical reproducibility
@@ -118,7 +117,6 @@ print("msg_delay", args.msg_delay)
 print("cluster: ", args.cluster)
 print("model_length: ", args.model_length)
 
-
 cmd = f'python {__file__} --minflip {args.minflip} --maxflip {args.maxflip} --nflips {args.nflips} --ldpciterations ' \
       f'{ldpc_iterations} --ent_threshold {thr} --clipping_factor {clipping_factor} --conf_center {args.conf_center} ' \
       f'--conf_slope {args.conf_slope} --multiply_data {args.multiply_data} --dec_type {args.dec_type}  --classifier_train ' \
@@ -147,9 +145,9 @@ def simulation_step(p: float) -> dict[str, Any]:
     channel = bsc_llr(p=p)
     ldpc_decoder = DecoderWiFi(spec=spec, max_iter=ldpc_iterations, decoder_type=args.dec_type)
     entropy_decoder = ClassifyingEntropyDecoder(DecoderWiFi(spec=spec, max_iter=ldpc_iterations,
-                                                                decoder_type=args.dec_type),
+                                                            decoder_type=args.dec_type),
                                                 model_length=model_length, entropy_threshold=thr,
-                                                clipping_factor=clipping_factor,classifier_training=args.classifier_train,
+                                                clipping_factor=clipping_factor, classifier_training=args.classifier_train,
                                                 n_clusters=args.n_clusters, window_length=window_len,
                                                 conf_center=args.conf_center,
                                                 conf_slope=args.conf_slope, bit_flip=p, cluster=args.cluster)
@@ -226,7 +224,8 @@ if __name__ == '__main__':
     with open(os.path.join(path, "cmd.txt"), 'w') as f:
         f.write(cmd)
 
-    # with open(os.path.join(path, f'{timestamp}_simulation_entropy_vs_pure_LDPC_weighted_model_{args.dec_type}_decoder.pickle'), 'wb') as f:
+    # with open(os.path.join(path, f'{timestamp}_simulation_entropy_vs_pure_LDPC_weighted_model_
+    # {args.dec_type}_decoder.pickle'), 'wb') as f:
     #     pickle.dump(results, f)
     with lzma.open(
             os.path.join(path, f'{timestamp}_simulation_classifying_entropy_{args.dec_type}_decoder.xz'),

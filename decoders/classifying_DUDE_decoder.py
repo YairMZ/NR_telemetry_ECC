@@ -5,6 +5,7 @@ from ldpc.decoder import LogSpaDecoder
 from numpy.typing import NDArray
 import numpy as np
 
+
 class ClassifyingDudeDecoder(Decoder):
     def __init__(self, ldpc_decoder: LogSpaDecoder, model_length: int, clipping_factor: float,
                  classifier_training: int, n_clusters: int, context_length: int,
@@ -37,7 +38,7 @@ class ClassifyingDudeDecoder(Decoder):
         self.clipping_factor = clipping_factor  # The model llr is clipped to +-clipping_factor * max_chanel_llr
 
         self.bit_flip = bit_flip
-        channel_transition_matrix = np.array([[1-bit_flip, bit_flip], [bit_flip, 1-bit_flip]])
+        channel_transition_matrix = np.array([[1 - bit_flip, bit_flip], [bit_flip, 1 - bit_flip]])
         loss_matrix = np.array([[0, 1], [1, 0]])
         self.dudes: list[list[OnlineDude]] = [[OnlineDude(channel_transition_matrix, loss_matrix, context_length,
                                                           hard_decision=False)
@@ -101,7 +102,7 @@ class ClassifyingDudeDecoder(Decoder):
         channel_llr = np.clip(channel_llr, -clipping, clipping)
         denoised_bits = np.array(channel_llr < 0, dtype=np.int_)
         estimate, llr, decode_success, iterations, syndrome, vnode_validity = self.ldpc_decoder.decode(channel_llr)
-        model_bits = estimate[self.model_bits_idx]
+        # model_bits = estimate[self.model_bits_idx]
         # if decode_success:  # buffer fully recovered
         #     self.update_model(model_bits, label)
         # else:  # update model from channel if data is bad
@@ -112,12 +113,13 @@ class ClassifyingDudeDecoder(Decoder):
         def model_confidence(model_size: int, center: int, slope: float) -> np.float_:
             return 0 if model_size <= 1 else 1 / (1 + np.exp(-(model_size - center) * slope, dtype=np.float_))
 
-        llr = observation.copy()
+        # llr = observation.copy()
         confidence = model_confidence(self.data_size[cluster_id], self.conf_center, self.conf_slope)
-        clipping = self.clipping_factor * max(llr)  # llr s clipped within +-clipping
+        # clipping = self.clipping_factor * max(llr)  # llr s clipped within +-clipping
         # model llr is calculated as log(Pr(c=0 | model) / Pr(c=1| model))
         # For soft decision DUDES
-        p1 = np.array([dude.denoise_sample(observation[i])[0] for i, dude in enumerate(self.dudes[cluster_id])])[:,:,1].flatten()
+        p1 = np.array([dude.denoise_sample(observation[i])[0] for i, dude in enumerate(self.dudes[cluster_id])])[:, :,
+             1].flatten()
         # For hard decision DUDES
         # p1 = np.array([dude.denoise_sample(observation[i])[0]for i, dude in enumerate(self.dudes[cluster_id])])
         # compute model llr to the observation

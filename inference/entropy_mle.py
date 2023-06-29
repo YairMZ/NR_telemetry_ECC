@@ -11,16 +11,16 @@ def bsc_llr(p: float) -> Callable[[NDArray[np.float_]], NDArray[np.float_]]:
     :param float p: the llr is parameterized by the bit flip probability of the channel p.
     :returns: return a callable which accepts a binary input argument - y_i (bits from the channel), and returns its llr
     """
-    return lambda y: np.power(-1, y) * np.log((1-p)/p)
+    return lambda y: np.power(-1, y) * np.log((1 - p) / p)
 
 
 class EMLE:
     """Implementation of the entropy aided MLE denoiser"""
 
     def __init__(self, f: float, threshold: float = 0.5,
-                window_length: int = 0,
+                 window_length: int = 0,
                  conf_center: int = 40, conf_slope: float = 0.35,
-                 hard_decision: bool = False, soft_input: bool=True) -> None:
+                 hard_decision: bool = False, soft_input: bool = True) -> None:
         """
         :param f: channel bit flip probability
         :param hard_decision: whether to use hard decision or soft decision
@@ -60,9 +60,8 @@ class EMLE:
         c = self._model_confidence()
         if c > 0:
             observation_llr[structural_elements] += c * np.log(
-                (1-self.p1+np.finfo(np.float_).eps)/(self.p1+np.finfo(np.float_).eps))[structural_elements]
+                (1 - self.p1 + np.finfo(np.float_).eps) / (self.p1 + np.finfo(np.float_).eps))[structural_elements]
         return observation_llr
-
 
     def update_model(self, observation_bits: NDArray[np.int_]) -> None:
         """updates the model with a new observation
@@ -93,6 +92,7 @@ class EMLE:
         self.update_model(hard_bits)
         cost: np.int_ = np.sum(np.abs(hard_bits - estimated_bits))
         return (estimated_bits, cost) if self.hard_decision else (estimated_llr, cost)
+
     def denoise_sequence(self, buffer_sequence: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
         """denoises a sequence of buffers
         :param buffer_sequence: a 2D array of buffers to denoise, each row is a buffer
@@ -107,5 +107,6 @@ class EMLE:
         for i in range(buffer_sequence.shape[0]):
             estimates[i], costs[i] = self.denoise_buffer(buffer_sequence[i])
         return estimates, costs
+
 
 __all__ = ['EMLE']

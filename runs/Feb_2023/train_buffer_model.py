@@ -2,7 +2,6 @@ from inference import BufferSegmentation, BufferModel
 from protocol_meta import dialect_meta as meta
 import numpy as np
 
-
 msg_type = 'telemetry'
 tx = np.genfromtxt(f'data/feb_17_tx_{msg_type}.csv', dtype=np.uint8, delimiter=',')
 temp = np.genfromtxt(f'data/feb_18_tx_{msg_type}.csv', dtype=np.uint8, delimiter=',')

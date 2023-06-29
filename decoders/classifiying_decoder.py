@@ -39,7 +39,7 @@ class ClassifyingEntropyDecoder(Decoder):
             self.models_entropy: list[NDArray[np.float_]] = [np.array([]) for _ in range(n_clusters)]
             self.train_models = True
         else:
-            self.distributions = [data_model[:model_length,:] for _ in range(n_clusters)]
+            self.distributions = [data_model[:model_length, :] for _ in range(n_clusters)]
             self.models_entropy = [entropy(self.distributions[cluster_id]) for cluster_id in range(n_clusters)]
             self.train_models = False
         self.conf_center = conf_center
@@ -55,8 +55,8 @@ class ClassifyingEntropyDecoder(Decoder):
         super().__init__(DecoderType.CLASSIFYING)
 
     def decode_buffer(self, channel_llr: Sequence[np.float_]) -> tuple[NDArray[np.int_], NDArray[np.float_], bool, int,
-                                                                       NDArray[np.int_], NDArray[np.int_],
-                                                                       NDArray[np.float_], NDArray[np.int_], int]:
+    NDArray[np.int_], NDArray[np.int_],
+    NDArray[np.float_], NDArray[np.int_], int]:
         """decodes a buffer
         :param channel_llr: channel llr of bits to decode
         :return: return a tuple (estimated_bits, llr, decode_success, no_iterations, no of mavlink messages found)
@@ -79,7 +79,8 @@ class ClassifyingEntropyDecoder(Decoder):
                 label: int = self.classifier.classify(channel_bits)
                 if label < 0:  # label is negative during training phase of classifier, don't try to use model
                     estimate, llr, decode_success, iterations, syndrome, vnode_validity = self.ldpc_decoder.decode(channel_llr)
-                    return estimate, llr, decode_success, iterations, syndrome, vnode_validity, np.array([]), np.array([]), label
+                    return estimate, llr, decode_success, iterations, syndrome, vnode_validity, np.array([]), np.array(
+                        []), label
             else:
                 self.running_idx = (self.running_idx + 1) % self.n_clusters
                 label = self.running_idx
@@ -99,7 +100,7 @@ class ClassifyingEntropyDecoder(Decoder):
         else:  # update model from channel if data is bad
             self.update_model(channel_bits, label)
         return estimate, llr, decode_success, iterations, syndrome, vnode_validity, self.distributions[label], \
-               self.model_bits_idx[self.models_entropy[label] < self.entropy_threshold], label
+            self.model_bits_idx[self.models_entropy[label] < self.entropy_threshold], label
 
     def update_model(self, bits: NDArray[np.int_], cluster_id: int) -> None:
         """update model of data. model_b uses any data regardless of correctness.
@@ -151,7 +152,8 @@ class ClassifyingEntropyDecoder(Decoder):
         # add model llr to the observation
         if confidence > 0:
             llr[structural_elements] += confidence * np.log(
-                (np.finfo(np.float_).eps + self.distributions[cluster_id][:, 0]) / (self.distributions[cluster_id][:, 1] + np.finfo(np.float_).eps)
+                (np.finfo(np.float_).eps + self.distributions[cluster_id][:, 0]) / (
+                        self.distributions[cluster_id][:, 1] + np.finfo(np.float_).eps)
             )[self.models_entropy[cluster_id] < self.entropy_threshold]
 
         return np.clip(llr, -clipping, clipping)

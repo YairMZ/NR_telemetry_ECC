@@ -111,14 +111,14 @@ class FieldModel:
         # TODO: this is isn't fully implemented yet
         if not self._up2date:
             self._update()
-        bits = num2bits(value, self.field_type)
+        # bits = num2bits(value, self.field_type)
         return np.zeros((1,))
 
     def std_significant_bits(self, num_std: float = 1) -> int:
         # TODO: this is isn't fully implemented yet
         if not self._up2date:
             self._update()
-        std_in_bits = num2bits(num_std * self._std, self.field_type)
+        # std_in_bits = num2bits(num_std * self._std, self.field_type)
         return int(np.ceil(np.log2(1 / (num_std * self._std))))
 
     def __str__(self) -> str:

@@ -12,13 +12,15 @@ def break_down(buffers: list[bytes]):
             t = [t[1][:3], t[1][3:]]
             # [buffer.find(b'data success: ')+len('data success: ')+3:]
             d = {
-                'r_time': datetime.strptime(buffer[buffer.find(b'time: ')+5:buffer.find(b'\r\n')].decode('UTF-8'), ' %d_%m_%Y_%H_%M_%S'),
-                'size': int(buffer[buffer.find(b'data size: ')+11:buffer.find(b'data success')].decode('UTF-8')),
+                'r_time': datetime.strptime(buffer[buffer.find(b'time: ') + 5:buffer.find(b'\r\n')].decode('UTF-8'),
+                                            ' %d_%m_%Y_%H_%M_%S'),
+                'size': int(buffer[buffer.find(b'data size: ') + 11:buffer.find(b'data success')].decode('UTF-8')),
                 'success': int(t[0][:1].decode('UTF-8')),
                 'payload': t[1][:123]
-                 }
+            }
             res.append(d)
     return res
+
 
 folder_name = "ship_logs"  # "/Users/yairmazal/Downloads/hc_data/to_parse"
 rx_files = [f for f in glob.glob(f'{folder_name}/**/*Rafael_rx.log', recursive=True) if os.path.getsize(f) > 0]

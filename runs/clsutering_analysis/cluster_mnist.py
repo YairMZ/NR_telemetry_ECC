@@ -1,6 +1,5 @@
-from sklearn import datasets, metrics
+from sklearn import datasets
 from sklearn.model_selection import train_test_split
-import matplotlib.pyplot as plt
 from inference import BufferClassifier, BMM
 import numpy as np
 import pickle
@@ -15,11 +14,11 @@ X_train, X_test, y_train, y_test = train_test_split(
 )
 print("train size:", X_train.shape[0])
 classifier = BufferClassifier(X_train.shape[0], 10, classify_dist="LL", merge_dist="Hellinger",
-                                  weight_scheme="linear")
+                              weight_scheme="linear")
 labels = np.empty(X_test.shape[0], dtype=np.uint8)
 for buffer in X_train:
-    l = classifier.classify(buffer)
-#save_model(classifier, "mnist_classifier")
+    label = classifier.classify(buffer)
+# save_model(classifier, "mnist_classifier")
 classifier.save("mnist_classifier.pkl")
 with open("mnist_classifier.pkl", "wb") as f:
     pickle.dump(X_train, f)

@@ -1,5 +1,4 @@
 import numpy as np
-from sklearn.metrics import confusion_matrix
 
 
 def relabel(predicted_labels, n_classes, real_labels=None):

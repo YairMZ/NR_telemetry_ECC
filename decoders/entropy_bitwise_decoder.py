@@ -42,7 +42,7 @@ class EntropyBitwiseDecoder(Decoder):
         self.window_length = window_length
         if model is not None:
             self.model_length = min(model.shape[0], self.model_bits_idx.size)
-            self.distribution: NDArray[np.float_] = model[:self.model_length, :]   # estimated distribution model
+            self.distribution: NDArray[np.float_] = model[:self.model_length, :]  # estimated distribution model
             self.entropy: NDArray[np.float_] = entropy(self.distribution)  # estimated entropy of distribution model
             self.predefined_model = True
         else:
@@ -116,7 +116,7 @@ class EntropyBitwiseDecoder(Decoder):
             clipping = self.clipping_factor * max(llr)  # llr s clipped within +-clipping
             llr[self.structural_elements] += np.clip(  # add model llr to the observation
                 np.log(
-                    (np.finfo(np.float_).eps + self.distribution[:, 0])/(self.distribution[:, 1] + np.finfo(np.float_).eps)
+                    (np.finfo(np.float_).eps + self.distribution[:, 0]) / (self.distribution[:, 1] + np.finfo(np.float_).eps)
                 ),
                 -clipping, clipping)[self.entropy < self.entropy_threshold]
         return llr
@@ -151,7 +151,7 @@ class EntropyBitwiseFlippingDecoder(Decoder):
         self.window_length = window_length
         if model is not None:
             self.model_length = min(model.shape[0], self.model_bits_idx.size)
-            self.distribution: NDArray[np.float_] = model[:self.model_length, :]   # estimated distribution model
+            self.distribution: NDArray[np.float_] = model[:self.model_length, :]  # estimated distribution model
             self.entropy: NDArray[np.float_] = entropy(self.distribution)  # estimated entropy of distribution model
             self.predefined_model = True
         else:
@@ -280,17 +280,16 @@ class EntropyBitwiseWeightedDecoder(Decoder):
             self.a_normalized_variance = 0.0
             self.b_normalized_variance = 0.0
             self.min_size = window_length
-            self.max_size = 2*window_length
+            self.max_size = 2 * window_length
         else:  # use MLE
             self.window_length = window_length
             self.model_a_data: NDArray[np.uint8] = np.array([])  # 2d array, each column is a sample
             self.model_b_data: NDArray[np.uint8] = np.array([])  # 2d array, each column is a sample
         super().__init__(DecoderType.ENTROPY)
 
-    def decode_buffer(self, channel_llr: Sequence[np.float_]) -> tuple[NDArray[np.int_], NDArray[np.float_], bool, int,
-                                                                       NDArray[np.int_], NDArray[np.int_], int,
-                                                                       NDArray[np.float_], NDArray[np.float_],
-                                                                       NDArray[np.int_], NDArray[np.int_]]:
+    def decode_buffer(self, channel_llr: Sequence[np.float_]) -> tuple[
+        NDArray[np.int_], NDArray[np.float_], bool, int, NDArray[np.int_], NDArray[np.int_], int, NDArray[np.float_],
+        NDArray[np.float_], NDArray[np.int_], NDArray[np.int_]]:
         """decodes a buffer
         :param channel_llr: channel llr of bits to decode
         :return: return a tuple (estimated_bits, llr, decode_success, no_iterations, no of mavlink messages found)
@@ -317,9 +316,9 @@ class EntropyBitwiseWeightedDecoder(Decoder):
             self.update_model_b(model_bits)
 
             return estimate, llr, decode_success, iterations, syndrome, vnode_validity, len(structure), \
-                   self.a_distribution, self.b_distribution, \
-                   self.model_bits_idx[self.a_entropy < self.entropy_threshold], \
-                   self.model_bits_idx[self.b_entropy < self.entropy_threshold]
+                self.a_distribution, self.b_distribution, \
+                self.model_bits_idx[self.a_entropy < self.entropy_threshold], \
+                self.model_bits_idx[self.b_entropy < self.entropy_threshold]
 
         # rectify llr
         model_llr = self.model_prediction(channel_llr)  # type: ignore
@@ -334,8 +333,8 @@ class EntropyBitwiseWeightedDecoder(Decoder):
             channel_bits = np.array(channel_llr < 0, dtype=np.int_)[self.model_bits_idx]
             self.update_model_b(channel_bits)
         return estimate, llr, decode_success, iterations, syndrome, vnode_validity, len(structure), \
-               self.a_distribution, self.b_distribution, self.model_bits_idx[self.a_entropy < self.entropy_threshold], \
-               self.model_bits_idx[self.b_entropy < self.entropy_threshold]
+            self.a_distribution, self.b_distribution, self.model_bits_idx[self.a_entropy < self.entropy_threshold], \
+            self.model_bits_idx[self.b_entropy < self.entropy_threshold]
 
     def update_model_a(self, bits: NDArray[np.int_]) -> None:
         """update model of data. model_a uses only data which mavlink passed crc (and valid codeword)
@@ -447,8 +446,9 @@ class EntropyBitwiseWeightedDecoder(Decoder):
         :param llr: recent observation regrading which a prediction is required.
         :return: an array of llr based on model predictions
         """
+
         def model_confidence(model_size: int, center: int, slope: float) -> np.float_:
-            return 0 if model_size <= 1 else 1/(1+np.exp(-(model_size-center)*slope, dtype=np.float_))
+            return 0 if model_size <= 1 else 1 / (1 + np.exp(-(model_size - center) * slope, dtype=np.float_))
 
         llr = observation.copy()
         # infer structure
@@ -462,12 +462,13 @@ class EntropyBitwiseWeightedDecoder(Decoder):
         if self.estimator == "Bayes":
             a_size = self.a_ones_prior[0] + self.a_zeros_prior[0] - 2
             b_size = self.b_ones_prior[0] + self.b_zeros_prior[0] - 2
-        else:   # Use MLE
+        else:  # Use MLE
             a_size = self.model_a_data.shape[1] if self.model_a_data.size > 0 else 0
             b_size = self.model_b_data.shape[1] if self.model_b_data.size > 0 else 0
 
         a_confidence = model_confidence(a_size, self.a_conf_center, self.a_conf_slope)
-        b_confidence = model_confidence(b_size, self.b_conf_center, self.b_conf_slope)  # consider window size when setting these
+        b_confidence = model_confidence(b_size, self.b_conf_center,
+                                        self.b_conf_slope)  # consider window size when setting these
 
         if self.confidence_scheme == 0:
             pass  # use separate confidence measures
@@ -477,7 +478,7 @@ class EntropyBitwiseWeightedDecoder(Decoder):
                 a_confidence *= a_confidence / s
                 b_confidence *= b_confidence / s
         elif self.confidence_scheme == 1:  # normalize sum but prefer "good" model
-            s = 2*a_confidence + b_confidence
+            s = 2 * a_confidence + b_confidence
             if s > 0:
                 a_confidence *= 2 * a_confidence / s
                 b_confidence *= b_confidence / s
@@ -493,11 +494,11 @@ class EntropyBitwiseWeightedDecoder(Decoder):
         # model llr is calculated as log(Pr(c=0 | model) / Pr(c=1| model))
         # add model llr to the observation
         if a_confidence > 0:
-            llr[a_structural_elements] += a_confidence*np.log(
-                (np.finfo(np.float_).eps + self.a_distribution[:, 0])/(self.a_distribution[:, 1] + np.finfo(np.float_).eps)
+            llr[a_structural_elements] += a_confidence * np.log(
+                (np.finfo(np.float_).eps + self.a_distribution[:, 0]) / (self.a_distribution[:, 1] + np.finfo(np.float_).eps)
             )[self.a_entropy < self.entropy_threshold]
         if b_confidence > 0:
-            llr[b_structural_elements] += b_confidence*np.log(
+            llr[b_structural_elements] += b_confidence * np.log(
                 (np.finfo(np.float_).eps + self.b_distribution[:, 0]) / (self.b_distribution[:, 1] + np.finfo(np.float_).eps)
             )[self.b_entropy < self.entropy_threshold]
 

@@ -97,19 +97,19 @@ def simulation_step(p: float) -> dict[str, Any]:
     channel = bsc_llr(p=p)
     ldpc_decoder = DecoderWiFi(spec=spec, max_iter=ldpc_iterations, decoder_type=args.dec_type)
     entropy_decoder = ClassifyingEntropyDecoder(DecoderWiFi(spec=spec, max_iter=ldpc_iterations,
-                                                                decoder_type=args.dec_type),
-                                                model_length=model_length, entropy_threshold=thr,
-                                                clipping_factor=clipping_factor,classifier_training=0,
-                                                n_clusters=1, window_length=window_len,
-                                                conf_center=args.conf_center,
-                                                conf_slope=args.conf_slope, bit_flip=p, cluster=0)
-    pre_trained_decoder = ClassifyingEntropyDecoder(DecoderWiFi(spec=spec, max_iter=ldpc_iterations,
                                                             decoder_type=args.dec_type),
                                                 model_length=model_length, entropy_threshold=thr,
                                                 clipping_factor=clipping_factor, classifier_training=0,
                                                 n_clusters=1, window_length=window_len,
-                                                bit_flip=p, cluster=0,
-                                                data_model=data_model)
+                                                conf_center=args.conf_center,
+                                                conf_slope=args.conf_slope, bit_flip=p, cluster=0)
+    pre_trained_decoder = ClassifyingEntropyDecoder(DecoderWiFi(spec=spec, max_iter=ldpc_iterations,
+                                                                decoder_type=args.dec_type),
+                                                    model_length=model_length, entropy_threshold=thr,
+                                                    clipping_factor=clipping_factor, classifier_training=0,
+                                                    n_clusters=1, window_length=window_len,
+                                                    bit_flip=p, cluster=0,
+                                                    data_model=data_model)
     no_errors = int(encoder.n * p)
     rx = np.zeros((n, encoder.n), dtype=np.bool_)
     decoded_ldpc = []
@@ -141,7 +141,8 @@ def simulation_step(p: float) -> dict[str, Any]:
     if n-pure_success > 0:
         logger.info(f"NR recovery rate for bit flip p= {p}, is: {(entropy_success-pure_success)/(n-pure_success)}")
     if n-pre_trained_success > 0:
-        logger.info(f"pre-trained recovery rate for bit flip p= {p}, is: {(pre_trained_success-pure_success)/(n-pure_success)}")
+        logger.info(f"pre-trained recovery rate for bit flip p= {p}, is: "
+                    f"{(pre_trained_success-pure_success)/(n-pure_success)}")
     # log data
     info_errors = np.sum(errors < encoder.k, axis=1)
     parity_errors = np.sum(errors >= encoder.k, axis=1)
@@ -179,7 +180,8 @@ def simulation_step(p: float) -> dict[str, Any]:
     step_results["pre_trained_buffer_success_rate"] = sum(int(res[-1] == 0) for res in decoded_pre_trained) / float(n)
     step_results["pre_trained_decoder_ber"] = sum(res[-1] for res in decoded_pre_trained) / float(n * len(encoded[0]))
 
-    timestamp = f'{str(datetime.date.today())}_{datetime.datetime.now().hour}_{datetime.datetime.now().minute}_{datetime.datetime.now().second}'
+    timestamp = f'{str(datetime.date.today())}_{datetime.datetime.now().hour}_{datetime.datetime.now().minute}_' \
+                f'{datetime.datetime.now().second}'
     with open(f'{timestamp}_{p}_simulation_pretrained_entropy_model.pickle', 'wb') as f:
         pickle.dump(step_results, f)
     return step_results
@@ -239,7 +241,7 @@ if __name__ == '__main__':
         entropy_ber = np.array([p['entropy_decoder_ber'] for p in results])
         pre_trained_ber = np.array([p['pre_trained_decoder_ber'] for p in results])
         fig = plt.figure()
-        plt.plot(raw_ber, ldpc_ber, 'bo', raw_ber, raw_ber, 'g^', raw_ber, entropy_ber, 'r*', raw_ber, pre_trained_ber,'k+')
+        plt.plot(raw_ber, ldpc_ber, 'bo', raw_ber, raw_ber, 'g^', raw_ber, entropy_ber, 'r*', raw_ber, pre_trained_ber, 'k+')
         plt.xlabel("BSC bit flip probability p")
         plt.ylabel("post decoding BER")
         fig.savefig(os.path.join(path, "ber_vs_error_p.eps"), dpi=150)

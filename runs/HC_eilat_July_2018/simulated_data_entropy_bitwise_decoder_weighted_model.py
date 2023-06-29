@@ -19,11 +19,10 @@ from scipy.io import savemat
 import lzma
 import pandas as pd
 
-
 parser = argparse.ArgumentParser(description='Run decoding on simulated data using multiprocessing.')
 parser.add_argument("--N", default=0, help="max number of transmissions to consider", type=int)
-parser.add_argument("--minflip", default=33*1e-3, help="minimal bit flip probability to consider", type=float)
-parser.add_argument("--maxflip", default=70*1e-3, help="maximal bit flip probability to consider", type=float)
+parser.add_argument("--minflip", default=33 * 1e-3, help="minimal bit flip probability to consider", type=float)
+parser.add_argument("--maxflip", default=70 * 1e-3, help="maximal bit flip probability to consider", type=float)
 parser.add_argument("--nflips", default=20, help="number of bit flips to consider", type=int)
 parser.add_argument("--ldpciterations", default=20, help="number of iterations of  LDPC decoder", type=int)
 parser.add_argument("--ent_threshold", default=0.36, help="entropy threshold to be used in entropy decoder", type=float)
@@ -104,7 +103,6 @@ print("decoder type: ", args.dec_type)
 print("corrected_dist:", bool(args.corrected_dist))
 print("estimator:", args.estimator)
 
-
 cmd = f'python {__file__} --minflip {args.minflip} --maxflip {args.maxflip} --nflips {args.nflips} --ldpciterations ' \
       f'{ldpc_iterations} --ent_threshold {thr} --clipping_factor {clipping_factor} --a_conf_center ' \
       f'{args.a_conf_center} --a_conf_slope {args.a_conf_slope} --b_conf_center {args.b_conf_center} --b_conf_slope ' \
@@ -114,7 +112,7 @@ cmd = f'python {__file__} --minflip {args.minflip} --maxflip {args.maxflip} --nf
 if window_len is not None:
     cmd += f' --window_len {window_len}'
 else:
-    cmd += f' --window_len 0'
+    cmd += ' --window_len 0'
 if args.N > 0:
     cmd += f' --N {n}'
     if processes is not None:
@@ -217,7 +215,8 @@ if __name__ == '__main__':
     with open(os.path.join(path, "cmd.txt"), 'w') as f:
         f.write(cmd)
 
-    # with open(os.path.join(path, f'{timestamp}_simulation_entropy_vs_pure_LDPC_weighted_model_{args.dec_type}_decoder.pickle'), 'wb') as f:
+    # with open(os.path.join(path, f'{timestamp}_simulation_entropy_vs_pure_LDPC_weighted_model_
+    # {args.dec_type}_decoder.pickle'), 'wb') as f:
     #     pickle.dump(results, f)
     with lzma.open(
             os.path.join(path, f'{timestamp}_simulation_entropy_vs_pure_LDPC_weighted_model_{args.dec_type}_decoder.xz'),
@@ -244,7 +243,8 @@ if __name__ == '__main__':
     summary = {"args": args, "raw_ber": raw_ber, "ldpc_ber": ldpc_ber, "entropy_ber": entropy_ber,
                "ldpc_buffer_success_rate": ldpc_buffer_success_rate,
                "entropy_buffer_success_rate": entropy_buffer_success_rate}
-    with open(os.path.join(path, f'{timestamp}_summary_entropy_vs_pure_LDPC_weighted_model_{args.dec_type}_decoder.pickle'), 'wb') as f:
+    with open(os.path.join(path, f'{timestamp}_summary_entropy_vs_pure_LDPC_weighted_model_{args.dec_type}_decoder.pickle'),
+              'wb') as f:
         pickle.dump(summary, f)
 
     savemat(os.path.join(path, f'{timestamp}_summary_entropy_vs_pure_LDPC_weighted_model_{args.dec_type}_decoder.mat'),

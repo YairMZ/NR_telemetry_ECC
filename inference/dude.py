@@ -5,6 +5,7 @@ class OnlineDude:
     """Unbalanced DUDE algorithm based on the paper "Online Denoising of Discrete Noisy Data"
     We implement the One-time Online Denoising (OOD) variant of the algorithm, with delta=0.
     """
+
     def __init__(self, channel_transition_matrix: np.ndarray, loss_matrix: np.ndarray, k: int, hard_decision: bool = True,
                  alphabet_size: int = 2):
         """
@@ -39,7 +40,7 @@ class OnlineDude:
             if self.hard_decision:
                 return observation, 0
             else:
-                return np.reshape(np.eye(self.alphabet_size)[observation],(1,-1)), 0
+                return np.reshape(np.eye(self.alphabet_size)[observation], (1, -1)), 0
         if self._last_context not in self.contexts:
             self.contexts[self._last_context] = np.zeros(self.alphabet_size)
         self.contexts[self._last_context][observation] += 1
@@ -71,7 +72,7 @@ class OnlineDude:
             estimates = np.zeros_like(observations)
         else:
             estimates = np.zeros((len(observations), self.alphabet_size))
-        costs = np.zeros_like(observations,dtype=np.float_)
+        costs = np.zeros_like(observations, dtype=np.float_)
         for i in range(len(observations)):
             estimates[i], costs[i] = self.denoise_sample(observations[i])
         return estimates, costs
@@ -87,10 +88,10 @@ class OnlineDude:
         tmp = np.matmul(empirical_p, self.inverse_channel_transition_matrix)
         if tmp[0, 0] < 1:
             tmp[0, 0] = 1
-            tmp[0, 1] = np.sum(tmp)-1
+            tmp[0, 1] = np.sum(tmp) - 1
         elif tmp[0, 1] < 1:
             tmp[0, 1] = 1
-            tmp[0, 0] = np.sum(tmp)-1
+            tmp[0, 0] = np.sum(tmp) - 1
         tmp *= self.channel_transition_matrix[:, observation]
         return tmp / np.sum(tmp)
 
@@ -112,6 +113,7 @@ class OnlineDude:
 class DUDE:
     """DUDE algorithm based on the paper "Universal Discrete Denoising: Known Channel" by Weissman et al.
     """
+
     def __init__(self, channel_transition_matrix: np.ndarray, loss_matrix: np.ndarray, k: int, hard_decision: bool = True,
                  alphabet_size: int = 2):
         """
@@ -178,12 +180,12 @@ class DUDE:
             estimates[:self.k] = np.eye(self.alphabet_size)[observations[:self.k]]
             estimates[-self.k:] = np.eye(self.alphabet_size)[observations[-self.k:]]
 
-        costs = np.zeros_like(observations,dtype=np.float_)
+        costs = np.zeros_like(observations, dtype=np.float_)
         # empirical distribution
         contexts = {}
-        for i in range(self.k, n-self.k):
-            context:tuple[tuple[int, ...], tuple[int, ...]] = tuple(observations[i-self.k:i]), \
-                tuple(observations[i+1:i+self.k+1])
+        for i in range(self.k, n - self.k):
+            context: tuple[tuple[int, ...], tuple[int, ...]] = tuple(observations[i - self.k:i]), \
+                tuple(observations[i + 1:i + self.k + 1])
             if context not in contexts:
                 contexts[context] = np.zeros(self.alphabet_size)
             contexts[context][observations[i]] += 1
@@ -193,17 +195,17 @@ class DUDE:
         # for context in contexts:
         #     contexts[context] /= np.sum(contexts[context])
 
-        #denoise the sequence
-        for i in range(self.k, n-self.k):
+        # denoise the sequence
+        for i in range(self.k, n - self.k):
             # compute the posterior
-            context = tuple(observations[i-self.k:i]), tuple(observations[i+1:i+self.k+1])
+            context = tuple(observations[i - self.k:i]), tuple(observations[i + 1:i + self.k + 1])
             observation = observations[i]
             empirical_p = contexts[context][np.newaxis]
             if self.hard_decision:
                 posterior_p = np.matmul(empirical_p, self.inverse_channel_transition_matrix) * self.channel_transition_matrix[
                                                                                                :, observation]
                 # posterior_p = self.smooth_posterior(empirical_p, observation)
-                cost= np.matmul(posterior_p, self.loss_matrix)[0]
+                cost = np.matmul(posterior_p, self.loss_matrix)[0]
                 estimates[i] = np.argmin(cost)
                 costs[i] = cost[estimates[i]]
             else:
@@ -213,6 +215,7 @@ class DUDE:
                 cost = np.matmul(np.matmul(posterior_p, self.loss_matrix), posterior_p.T)
                 estimates[i], costs[i] = posterior_p, cost[0, 0]
         return estimates, costs.mean()
+
     def smooth_posterior(self, empirical_p: np.ndarray, observation: int) -> np.ndarray:
         """Smoothen a binary posterior to ensure positive probabilities
 
@@ -224,10 +227,10 @@ class DUDE:
         tmp = np.matmul(empirical_p, self.inverse_channel_transition_matrix)
         if tmp[0, 0] < 1:
             tmp[0, 0] = 1
-            tmp[0, 1] = np.sum(tmp)-1
+            tmp[0, 1] = np.sum(tmp) - 1
         elif tmp[0, 1] < 1:
             tmp[0, 1] = 1
-            tmp[0, 0] = np.sum(tmp)-1
+            tmp[0, 0] = np.sum(tmp) - 1
         tmp *= self.channel_transition_matrix[:, observation]
         return tmp / np.sum(tmp)
 

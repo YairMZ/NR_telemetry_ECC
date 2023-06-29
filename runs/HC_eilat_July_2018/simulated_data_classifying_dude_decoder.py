@@ -18,11 +18,10 @@ import pandas as pd
 from utils import setup_logger
 import shutil
 
-
 parser = argparse.ArgumentParser(description='Run decoding on simulated data using multiprocessing.')
 parser.add_argument("--N", default=0, help="max number of transmissions to consider", type=int)
-parser.add_argument("--minflip", default=33*1e-3, help="minimal bit flip probability to consider", type=float)
-parser.add_argument("--maxflip", default=70*1e-3, help="maximal bit flip probability to consider", type=float)
+parser.add_argument("--minflip", default=33 * 1e-3, help="minimal bit flip probability to consider", type=float)
+parser.add_argument("--maxflip", default=70 * 1e-3, help="maximal bit flip probability to consider", type=float)
 parser.add_argument("--nflips", default=20, help="number of bit flips to consider", type=int)
 parser.add_argument("--ldpciterations", default=20, help="number of iterations of  LDPC decoder", type=int)
 parser.add_argument("--ent_threshold", default=0.36, help="entropy threshold", type=float)
@@ -71,15 +70,15 @@ for binary_data in hc_bin_data[:n]:
         padded = binary_data + Bits(auto=rng.integers(low=0, high=2, size=pad_len))
         encoded.append(encoder.encode(padded))
     elif args.n_clusters == 2:
-        padded = binary_data[:576] + Bits(auto=rng.integers(low=0, high=2, size=encoder.k-576))
+        padded = binary_data[:576] + Bits(auto=rng.integers(low=0, high=2, size=encoder.k - 576))
         encoded.append(encoder.encode(padded))
         encoded.append(encoder.encode(binary_data[576:]))
     elif args.n_clusters == 3:
-        padded = binary_data[:416] + Bits(auto=rng.integers(low=0, high=2, size=encoder.k-416))
+        padded = binary_data[:416] + Bits(auto=rng.integers(low=0, high=2, size=encoder.k - 416))
         encoded.append(encoder.encode(padded))
-        padded = binary_data[416:864] + Bits(auto=rng.integers(low=0, high=2, size=encoder.k - (864-416)))
+        padded = binary_data[416:864] + Bits(auto=rng.integers(low=0, high=2, size=encoder.k - (864 - 416)))
         encoded.append(encoder.encode(padded))
-        padded = binary_data[864:] + Bits(auto=rng.integers(low=0, high=2, size=encoder.k - (1224-864)))
+        padded = binary_data[864:] + Bits(auto=rng.integers(low=0, high=2, size=encoder.k - (1224 - 864)))
         encoded.append(encoder.encode(padded))
 
 for _ in range(args.multiply_data):  # generate more buffers for statistical reproducibility
@@ -101,7 +100,6 @@ n = len(encoded)  # redefine n
 logger = setup_logger(name=__file__, log_file=os.path.join("results/", 'log.log'))
 
 
-
 def simulation_step(p: float) -> dict[str, Any]:
     global ldpc_iterations
     global model_length
@@ -113,12 +111,12 @@ def simulation_step(p: float) -> dict[str, Any]:
     channel = bsc_llr(p=p)
     ldpc_decoder = DecoderWiFi(spec=spec, max_iter=ldpc_iterations, decoder_type=args.dec_type)
     dude_decoder = ClassifyingDudeDecoder(DecoderWiFi(spec=spec, max_iter=ldpc_iterations,
-                                                                decoder_type=args.dec_type),
-                                             model_length=model_length, clipping_factor=clipping_factor,
-                                             classifier_training=args.classifier_train, n_clusters=args.n_clusters,
-                                             context_length=args.context_length, conf_center=args.conf_center,
-                                             conf_slope=args.conf_slope, bit_flip=p, cluster=args.cluster,
-                                             entropy_threshold=thr)
+                                                      decoder_type=args.dec_type),
+                                          model_length=model_length, clipping_factor=clipping_factor,
+                                          classifier_training=args.classifier_train, n_clusters=args.n_clusters,
+                                          context_length=args.context_length, conf_center=args.conf_center,
+                                          conf_slope=args.conf_slope, bit_flip=p, cluster=args.cluster,
+                                          entropy_threshold=thr)
     no_errors = int(encoder.n * p)
     rx = []
     decoded_ldpc = []
@@ -163,8 +161,8 @@ def simulation_step(p: float) -> dict[str, Any]:
 
     # decoding
     decoded_dude_df = pd.DataFrame(decoded_dude,
-                                      columns=["estimate", "llr", "decode_success", "iterations", "cluster_label",
-                                               "denoised_bits", "hamming"])
+                                   columns=["estimate", "llr", "decode_success", "iterations", "cluster_label",
+                                            "denoised_bits", "hamming"])
     step_results["decoded_dude"] = decoded_dude_df
     decoded_ldpc_df = pd.DataFrame(decoded_ldpc,
                                    columns=["estimate", "llr", "decode_success", "iterations", "syndrome",
@@ -211,9 +209,9 @@ if __name__ == '__main__':
 
     cmd = f'python {__file__} --minflip {args.minflip} --maxflip {args.maxflip} --nflips {args.nflips} --ldpciterations ' \
           f'{ldpc_iterations} --ent_threshold {thr} --clipping_factor {clipping_factor} --conf_center {args.conf_center} ' \
-          f'--conf_slope {args.conf_slope} --multiply_data {args.multiply_data} --dec_type {args.dec_type}  --classifier_train ' \
-          f'{args.classifier_train} --n_clusters {args.n_clusters} --msg_delay {args.msg_delay} --cluster {args.cluster} ' \
-          f'--model_length {args.model_length} --context_length {args.context_length}'
+          f'--conf_slope {args.conf_slope} --multiply_data {args.multiply_data} --dec_type {args.dec_type}  ' \
+          f'--classifier_train {args.classifier_train} --n_clusters {args.n_clusters} --msg_delay {args.msg_delay} ' \
+          f'--cluster {args.cluster} --model_length {args.model_length} --context_length {args.context_length}'
 
     if args.N > 0:
         cmd += f' --N {n}'
@@ -232,7 +230,6 @@ if __name__ == '__main__':
         with Pool(processes=processes) as pool:
             results: list[dict[str, Any]] = pool.map(simulation_step, bit_flip_p)
         # results: list[dict[str, Any]] = list(map(simulation_step, bit_flip_p))
-
 
         with lzma.open(
                 os.path.join(path, f'{timestamp}_simulation_classifying_DUDE_{args.dec_type}_decoder.xz'),

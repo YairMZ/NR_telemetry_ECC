@@ -4,7 +4,6 @@ import numpy as np
 from ldpc.encoder import EncoderWiFi
 from ldpc.wifi_spec_codes import WiFiSpecCode
 from ldpc.decoder import bsc_llr, DecoderWiFi
-from numpy.typing import NDArray
 from decoders import CombinedDecoder, ClassifyingEntropyDecoder, MavlinkRectifyingDecoder, CombinedUnifiedDecoder
 from inference import BufferSegmentation, BufferModel
 from protocol_meta import dialect_meta as meta
@@ -96,7 +95,7 @@ for binary_data in hc_bin_data[:n]:
 for _ in range(args.multiply_data):  # generate more buffers for statistical reproducibility
     encoded.extend(encoded)
 n = len(encoded)
-#{0: 33, 52: 234, 72: 30, 108: 212, 135: 218}
+# {0: 33, 52: 234, 72: 30, 108: 212, 135: 218}
 data_model = None
 bs = BufferSegmentation(meta.protocol_parser)
 if args.n_clusters == 1:
@@ -153,13 +152,13 @@ def simulation_step(p: float) -> dict[str, Any]:
                                         classifier_training_size=args.classifier_train, cluster=bool(args.cluster),
                                         window_length=window_len, data_model=data_model, conf_center=args.conf_center,
                                         conf_slope=args.conf_slope, debug=True, bit_flip=p, flip=bool(args.flip))
-    entropy_decoder = ClassifyingEntropyDecoder(DecoderWiFi(spec=spec, max_iter=ldpc_iterations,decoder_type=args.dec_type),
+    entropy_decoder = ClassifyingEntropyDecoder(DecoderWiFi(spec=spec, max_iter=ldpc_iterations, decoder_type=args.dec_type),
                                                 model_length=model_length, entropy_threshold=thr,
-                                                clipping_factor=clipping_factor,classifier_training=args.classifier_train,
+                                                clipping_factor=clipping_factor, classifier_training=args.classifier_train,
                                                 n_clusters=args.n_clusters, window_length=window_len,
                                                 conf_center=args.conf_center,
                                                 conf_slope=args.conf_slope, bit_flip=p, cluster=args.cluster)
-    rectify_decoder = MavlinkRectifyingDecoder(DecoderWiFi(spec=spec, max_iter=ldpc_iterations,decoder_type=args.dec_type),
+    rectify_decoder = MavlinkRectifyingDecoder(DecoderWiFi(spec=spec, max_iter=ldpc_iterations, decoder_type=args.dec_type),
                                                model_length, args.valid_threshold, args.invalid_threshold,
                                                args.n_clusters, args.valid_factor, args.invalid_factor,
                                                args.classifier_train, bool(args.cluster), window_len,
@@ -199,8 +198,8 @@ def simulation_step(p: float) -> dict[str, Any]:
     logger.info(f"successful nr decoding for bit flip p= {p}, is: {nr_success}/{n}")
     logger.info(f"successful entropy decoding for bit flip p= {p}, is: {entropy_success}/{n}")
     logger.info(f"successful rectify decoding for bit flip p= {p}, is: {rectify_success}/{n}")
-    if n-pure_success > 0:
-        logger.info(f"nr recovery rate for bit flip p= {p}, is: {(nr_success-pure_success)/(n-pure_success)}")
+    if n - pure_success > 0:
+        logger.info(f"nr recovery rate for bit flip p= {p}, is: {(nr_success - pure_success) / (n - pure_success)}")
 
     # log data
     info_errors = np.sum(errors < encoder.k, axis=1)

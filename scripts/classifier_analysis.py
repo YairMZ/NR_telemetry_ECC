@@ -4,7 +4,6 @@ from bitstring import Bits, BitArray
 import numpy as np
 from ldpc.encoder import EncoderWiFi
 from ldpc.wifi_spec_codes import WiFiSpecCode
-from ldpc.decoder import bsc_llr
 from numpy.typing import NDArray
 from inference import BufferSegmentation, BufferModel
 from protocol_meta import dialect_meta as meta
@@ -201,7 +200,7 @@ def forcing_characterization(valid_field_p: list[tuple[str, float, float]], vali
     positive = errors.size
     negative = buffer_len_bits - positive
     flipped_bits_performance = np.array([true_positive, false_positive, negative - false_positive,
-                                        positive - true_positive, positive, negative], dtype=np.int_)
+                                         positive - true_positive, positive, negative], dtype=np.int_)
 
     return {"forced_fields": forced_fields, "forced_bits": forced_bits, "correctly_forced_bits": correctly_forced_bits,
             "incorrectly_forced_bits": incorrectly_forced_bits, "missed_forced_bits": missed_forced_bits,
@@ -227,7 +226,6 @@ def simulation_step(p: float) -> dict[str, Any]:
     else:
         data_model = BufferModel.load('../runs/HC_eilat_July_2018/data/model_2018_all.json')
 
-    channel = bsc_llr(p=p)
     no_errors = int(encoder.n * p)
     rx: list[NDArray[np.int_]] = []
     errors = np.vstack(
@@ -295,7 +293,8 @@ def simulation_step(p: float) -> dict[str, Any]:
         bad_fields_performance[tx_idx] = classifier_res["bad_fields_performance"]
 
         # look for constant bits for forcing
-        forcing_res = forcing_characterization(valid_field_p, valid_bits_p, bits_field_std, running_idx, damaged_fields[tx_idx],
+        forcing_res = forcing_characterization(valid_field_p, valid_bits_p, bits_field_std, running_idx,
+                                               damaged_fields[tx_idx],
                                                errors[tx_idx], data_model, corrupted, np.array(encoded[tx_idx], dtype=np.int_))
         forced_fields[tx_idx] = forcing_res["forced_fields"]
         forced_bits[tx_idx] = forcing_res["forced_bits"]
@@ -341,8 +340,8 @@ def simulation_step(p: float) -> dict[str, Any]:
     step_results["forcing_quality"] = forcing_quality
     step_results["flipped_bits_performance"] = flipped_bits_performance
 
-
     return step_results
+
 
 if __name__ == '__main__':
     timestamp = f'{str(datetime.date.today())}_{str(datetime.datetime.now().hour)}_{str(datetime.datetime.now().minute)}_' \

@@ -15,7 +15,6 @@ import lzma
 import pandas as pd
 from utils import setup_logger
 
-
 parser = argparse.ArgumentParser(description='Run decoding on experimental data.')
 parser.add_argument("--ldpciterations", default=130, help="number of iterations of  LDPC decoder", type=int)
 parser.add_argument("--segiterations", default=1, help="number of exchanges between LDPC and CB decoder", type=int)
@@ -45,7 +44,7 @@ if args.msg_type == 0:
 elif args.msg_type == 1:
     msg_type = '2023'
     h = AList.from_file("spec/h2023.alist")
-    k = 2023*8
+    k = 2023 * 8
     if args.separate_models == 0:
         n_clusters = 1
     else:
@@ -60,9 +59,9 @@ elif args.msg_type == 2:
         n_clusters = 2
 elif args.msg_type == 3:
     msg_type = 'cdma'
-    k = 18*8
+    k = 18 * 8
     n_clusters = 1
-    ## TODO missing code
+    # TODO missing code
 
 if args.experiment_date == 'all':
     tx = np.genfromtxt(f'data/feb_17_tx_{msg_type}.csv', dtype=np.uint8, delimiter=',')
@@ -76,14 +75,12 @@ else:
     tx = np.genfromtxt(f'data/feb_{args.experiment_date}_tx_{msg_type}.csv', dtype=np.uint8, delimiter=',')
     rx = np.genfromtxt(f'data/feb_{args.experiment_date}_llr_{msg_type}.csv', dtype=np.float_, delimiter=',')
 
-
 bs = BufferSegmentation(meta.protocol_parser)
-_, _, buffer_structure = bs.segment_buffer(np.packbits(tx[0, :k]).tobytes()) # segment first buffer to get structure
+_, _, buffer_structure = bs.segment_buffer(np.packbits(tx[0, :k]).tobytes())  # segment first buffer to get structure
 data_model = BufferModel.load('data/model_2023.json')
 number_of_messages, n = rx.shape
 window_len = args.window_len if args.window_len > 0 else None
 model_length = k
-
 
 timestamp = f'{str(datetime.date.today())}_{str(datetime.datetime.now().hour)}_{str(datetime.datetime.now().minute)}_' \
             f'{str(datetime.datetime.now().second)}'
@@ -92,7 +89,6 @@ path = os.path.join("results/", timestamp)
 os.mkdir(path)
 
 logger = setup_logger(name=__file__, log_file=os.path.join(path, 'log.log'))
-
 
 logger.info(__file__)
 logger.info(f"number of buffers to process: {number_of_messages}")
@@ -129,11 +125,11 @@ ldpc_decoder = LogSpaDecoder(h=h.to_sparse(), max_iter=args.ldpciterations, deco
 rectify_decoder = MavlinkRectifyingDecoder(LogSpaDecoder(h=h.to_sparse(), max_iter=args.ldpciterations,
                                                          decoder_type=args.dec_type, info_idx=np.array(
         [True] * k + [False] * (n - k))),
-                                               model_length, args.valid_threshold, args.invalid_threshold,
-                                               1, args.valid_factor, args.invalid_factor,
-                                               0, False, window_len,
-                                               data_model, args.conf_center, args.conf_slope,
-                                               segmentation_iterations=args.segiterations)
+                                           model_length, args.valid_threshold, args.invalid_threshold,
+                                           1, args.valid_factor, args.invalid_factor,
+                                           0, False, window_len,
+                                           data_model, args.conf_center, args.conf_slope,
+                                           segmentation_iterations=args.segiterations)
 rectify_decoder.set_buffer_structures([buffer_structure])
 decoded_ldpc = []
 decoded_rect = []
@@ -180,10 +176,10 @@ results["max_ldpc_iterations"] = ldpc_iterations
 
 # decoding
 decoded_rect_df = pd.DataFrame(decoded_rect,
-                                  columns=["estimate", "llr", "decode_success", "iterations", "syndrome",
-                                            "vnode_validity", "cluster_label", "segmented_bits", "good_field_idx",
-                                            "bad_field_idx", "classifier_performance", "forcing_performance",
-                                            "hamming"])
+                               columns=["estimate", "llr", "decode_success", "iterations", "syndrome",
+                                        "vnode_validity", "cluster_label", "segmented_bits", "good_field_idx",
+                                        "bad_field_idx", "classifier_performance", "forcing_performance",
+                                        "hamming"])
 results["decoded_rect"] = decoded_rect_df
 decoded_ldpc_df = pd.DataFrame(decoded_ldpc,
                                columns=["estimate", "llr", "decode_success", "iterations", "syndrome",
@@ -210,6 +206,6 @@ results['args'] = args
 savemat(os.path.join(path, f'{timestamp}_experimental_data_analysis.mat'), results, do_compression=True)
 
 summary_txt = f'successful pure decoding is: {sum(res[2] for res in decoded_ldpc)}/{number_of_messages}\n' \
-          f'successful mavlink decoding is: {sum(res[2] for res in decoded_rect)}/{number_of_messages}'
+              f'successful mavlink decoding is: {sum(res[2] for res in decoded_rect)}/{number_of_messages}'
 with open(os.path.join(path, "summary.txt"), 'w') as f:
     f.write(summary_txt)

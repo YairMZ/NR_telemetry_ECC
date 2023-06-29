@@ -2,7 +2,6 @@
 from abc import ABC, abstractmethod
 from enum import Enum, auto
 from numpy.typing import NDArray
-from collections.abc import Sequence
 import numpy as np
 
 
@@ -18,6 +17,7 @@ class DecoderType(Enum):
 
 class Decoder(ABC):
     """The class serves as a base class for all decoders, and serves as an interface"""
+
     def __init__(self, decoder_type: DecoderType):
         self.decoder_type = decoder_type
 

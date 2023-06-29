@@ -13,7 +13,6 @@ import lzma
 import pandas as pd
 from utils import setup_logger
 
-
 parser = argparse.ArgumentParser(description='Run decoding on experimental data.')
 parser.add_argument("--ldpciterations", default=60, help="number of iterations of  LDPC decoder", type=int)
 parser.add_argument("--ent_threshold", default=0.36, help="entropy threshold to be used in entropy decoder", type=float)
@@ -41,7 +40,7 @@ if args.msg_type == 0:
 elif args.msg_type == 1:
     msg_type = '2023'
     h = AList.from_file("spec/h2023.alist")
-    k = 2023*8
+    k = 2023 * 8
     if args.separate_models == 0:
         n_clusters = 1
     else:
@@ -56,9 +55,9 @@ elif args.msg_type == 2:
         n_clusters = 2
 elif args.msg_type == 3:
     msg_type = 'cdma'
-    k = 18*8
+    k = 18 * 8
     n_clusters = 1
-    ## TODO missing code
+    # TODO missing code
 
 if args.experiment_date == 'all':
     tx = np.genfromtxt(f'data/feb_17_tx_{msg_type}.csv', dtype=np.uint8, delimiter=',')
@@ -71,8 +70,6 @@ if args.experiment_date == 'all':
 else:
     tx = np.genfromtxt(f'data/feb_{args.experiment_date}_tx_{msg_type}.csv', dtype=np.uint8, delimiter=',')
     rx = np.genfromtxt(f'data/feb_{args.experiment_date}_llr_{msg_type}.csv', dtype=np.float_, delimiter=',')
-
-
 
 number_of_messages, n = rx.shape
 
@@ -87,7 +84,6 @@ path = os.path.join("results/", timestamp)
 os.mkdir(path)
 
 logger = setup_logger(name=__file__, log_file=os.path.join(path, 'log.log'))
-
 
 logger.info(__file__)
 logger.info(f"number of buffers to process: {number_of_messages}")
@@ -200,6 +196,6 @@ results['args'] = args
 savemat(os.path.join(path, f'{timestamp}_experimental_data_analysis.mat'), results, do_compression=True)
 
 summary_txt = f'successful pure decoding is: {sum(res[2] for res in decoded_ldpc)}/{number_of_messages}\n' \
-          f'successful entropy decoding is: {sum(res[2] for res in decoded_entropy)}/{number_of_messages}'
+              f'successful entropy decoding is: {sum(res[2] for res in decoded_entropy)}/{number_of_messages}'
 with open(os.path.join(path, "summary.txt"), 'w') as f:
     f.write(summary_txt)
