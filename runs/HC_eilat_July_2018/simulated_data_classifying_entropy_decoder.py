@@ -66,18 +66,18 @@ encoded = []
 for binary_data in hc_bin_data[:n]:
     if args.n_clusters == 1:
         pad_len = encoder.k - len(binary_data)
-        padded = binary_data + Bits(auto=rng.integers(low=0, high=2, size=pad_len))
+        padded = np.array(binary_data + Bits(auto=rng.integers(low=0, high=2, size=pad_len)), dtype=np.int_)
         encoded.append(encoder.encode(padded))
     elif args.n_clusters == 2:
-        padded = binary_data[:576] + Bits(auto=rng.integers(low=0, high=2, size=encoder.k - 576))
+        padded = np.array(binary_data[:576] + Bits(auto=rng.integers(low=0, high=2, size=encoder.k - 576)), dtype=np.int_)
         encoded.append(encoder.encode(padded))
-        encoded.append(encoder.encode(binary_data[576:]))
+        encoded.append(encoder.encode(np.array(binary_data[576:], dtype=np.int_)))
     elif args.n_clusters == 3:
-        padded = binary_data[:416] + Bits(auto=rng.integers(low=0, high=2, size=encoder.k - 416))
+        padded = np.array(binary_data[:416] + Bits(auto=rng.integers(low=0, high=2, size=encoder.k - 416)), dtype=np.int_)
         encoded.append(encoder.encode(padded))
-        padded = binary_data[416:864] + Bits(auto=rng.integers(low=0, high=2, size=encoder.k - (864 - 416)))
+        padded = np.array(binary_data[416:864] + Bits(auto=rng.integers(low=0, high=2, size=encoder.k - (864 - 416))), dtype=np.int_)
         encoded.append(encoder.encode(padded))
-        padded = binary_data[864:] + Bits(auto=rng.integers(low=0, high=2, size=encoder.k - (1224 - 864)))
+        padded = np.array(binary_data[864:] + Bits(auto=rng.integers(low=0, high=2, size=encoder.k - (1224 - 864))), dtype=np.int_)
         encoded.append(encoder.encode(padded))
 
 for _ in range(args.multiply_data):  # generate more buffers for statistical reproducibility
