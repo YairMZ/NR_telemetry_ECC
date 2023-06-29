@@ -13,6 +13,7 @@ class DecoderType(Enum):
     COMBINED = auto()
     CLASSIFYING = auto()
     DUDE = auto()
+    TURBO = auto()
 
 
 class Decoder(ABC):
@@ -21,7 +22,7 @@ class Decoder(ABC):
         self.decoder_type = decoder_type
 
     @abstractmethod
-    def decode_buffer(self, channel_word: Sequence[np.float_]) -> tuple[NDArray[np.int_], NDArray[np.float_], bool, int, int]:
+    def decode_buffer(self, channel_word: NDArray[np.float_]) -> tuple[NDArray[np.int_], NDArray[np.float_], bool, int, int]:
         """decodes a buffer
         :param channel_word: buffer to decode, input can be decimal (int) byte or bit values, or channel llr (float).
         :return: return a tuple (estimated_bits, llr, decode_success, no_iterations, no of mavlink messages found)
