@@ -14,7 +14,7 @@ class ClassifyingEntropyDecoder(Decoder):
                  classifier_training: int, n_clusters: int,
                  window_length: Optional[int] = None, conf_center: int = 40, conf_slope: float = 0.35,
                  bit_flip: float = 0, cluster: int = 1, data_model: Optional[NDArray[np.float_]] = None,
-                 sigma: float = 0) -> None:
+                 reliability_method: int = 0) -> None:
         """
         Create a new decoder
         :param ldpc_decoder:  for ldpc code used
@@ -52,7 +52,7 @@ class ClassifyingEntropyDecoder(Decoder):
         self.n_clusters = n_clusters
         self.cluster = bool(cluster)
         self.running_idx = -1
-        self.sigma = sigma
+        self.reliability_method = reliability_method
         super().__init__(DecoderType.CLASSIFYING)
 
     def decode_buffer(self, channel_llr: NDArray[np.float_]) -> tuple[NDArray[np.int_], NDArray[np.float_], bool, int,
@@ -105,8 +105,10 @@ class ClassifyingEntropyDecoder(Decoder):
             estimate, llr, decode_success, iterations, syndrome, vnode_validity = self.ldpc_decoder.decode(model_llr)
         elif isinstance(self.ldpc_decoder, WbfDecoder):  # wbf decoder
             # Use WBF only with AWGN since it assumes a specific relationship between priors and LLR
-            estimate, decode_success, iterations, syndrome, vnode_validity = self.ldpc_decoder.decode(
-                channel_llr, model_llr * np.power(self.sigma, 2) / 2)
+            # The more positive the reliability is, the less reliable the value is
+            samples, priors = self._sample_and_priors(channel_llr,model_llr)
+            estimate, decode_success, iterations, syndrome, vnode_validity = self.ldpc_decoder.decode(samples,
+                                                                                                      priors)
             llr = np.array([])
         model_bits = estimate[self.model_bits_idx]
         if decode_success:  # buffer fully recovered
@@ -173,5 +175,34 @@ class ClassifyingEntropyDecoder(Decoder):
 
         return llr
 
+    def _sample_and_priors(self, channel_sample: NDArray[np.float_], model_llr: NDArray[np.float_]):
+        """The method returns a modified channel sample and priors depending on the method used and inputs"""
+        max_sample = max(np.abs(channel_sample))
+        samples = channel_sample
+        priors = np.zeros_like(samples)
+        if max(np.abs(model_llr)) > 0:
+            if self.reliability_method == 0:  # sum LLRs and normalize
+                # normalize model llr to channel sample, sum, and re-normalize
+                if max(np.abs(model_llr)) > max_sample:
+                    samples = channel_sample + model_llr*max_sample/max(np.abs(model_llr))
+                else:
+                    samples = channel_sample + model_llr
+                samples *= max_sample/max(np.abs(samples))
+                return samples, priors
+
+            ## Methods 1&2 are shit. Don't USE!!! Use only method 0 until fixed.
+            confidence_coefficient = 1  # when reliability_method==1
+            # if self.reliability_method == 1:  # don't modify samples, use confidence_coefficient=1
+            #     confidence_coefficient = 1
+            if self.reliability_method == 2:  # confidence_coefficient=1
+                rms_channel_sample = np.mean(np.power(channel_sample,2))**0.5
+                mean_check_degree = np.sum(self.ldpc_decoder.h, axis=1).mean()
+                confidence_coefficient = rms_channel_sample/mean_check_degree
+            priors = -np.sign(channel_sample*model_llr) * np.abs(model_llr)
+            if max(abs(priors)) > 0 and max(abs(priors)) > max_sample:  # normalize to samples
+                priors *= max_sample/max(abs(priors))
+            if max(abs(priors)) > 0 and max(abs(priors)) > confidence_coefficient:  # normalize to coefficient
+                priors *= confidence_coefficient/max(abs(priors))
+        return samples, priors
 
 __all__ = ["ClassifyingEntropyDecoder"]
