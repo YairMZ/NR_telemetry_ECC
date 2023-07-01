@@ -143,8 +143,8 @@ def simulation_step(p: float) -> dict[str, Any]:
                                                     conf_center=args.conf_center,
                                                     conf_slope=args.conf_slope, bit_flip=p, cluster=args.cluster)
     elif args.dec_type == "BF":
-        m, n = h.shape
-        k = n - m
+        m, nn = h.shape
+        k = nn - m
         ldpc_decoder = WbfDecoder(h=h, max_iter=ldpc_iterations, decoder_variant=WbfVariant(args.wbf_variant),
                                   info_idx=np.array([True] * k + [False] * m))
         entropy_decoder = ClassifyingEntropyDecoder(WbfDecoder(h=h, max_iter=ldpc_iterations, decoder_variant=WbfVariant(
@@ -153,7 +153,7 @@ def simulation_step(p: float) -> dict[str, Any]:
                                                     clipping_factor=clipping_factor, classifier_training=args.classifier_train,
                                                     n_clusters=args.n_clusters, window_length=window_len,
                                                     conf_center=args.conf_center, conf_slope=args.conf_slope, bit_flip=p,
-                                                    cluster=args.cluster, sigma=sigma)
+                                                    cluster=args.cluster, reliability_method=0)
     else:
         raise ValueError('Incorrect decoder type')
     decoded_ldpc = []
@@ -163,7 +163,7 @@ def simulation_step(p: float) -> dict[str, Any]:
     step_results: dict[str, Any] = {'data': hc_bin_data[:n]}
     for tx_idx in range(n):
         if args.channel_type == "bsc":
-            corrupted = encoded[tx_idx]
+            corrupted = np.array(encoded[tx_idx])
             corrupted[errors[tx_idx]] = 1 - corrupted[errors[tx_idx]]
             channel_llr = channel(corrupted)
         else:
@@ -173,7 +173,7 @@ def simulation_step(p: float) -> dict[str, Any]:
             noise = sigma * rng.normal(size=len(baseband))
             # channel: y_i = x_i + n_i, i.e. add noise
             noisy = baseband + noise
-            channel_llr = channel(noisy)
+            channel_llr = noisy
             corrupted = noisy < 0
             errors[tx_idx] = encoded[tx_idx] ^ corrupted
         rx[tx_idx] = corrupted
@@ -207,9 +207,15 @@ def simulation_step(p: float) -> dict[str, Any]:
                                       columns=["estimate", "llr", "decode_success", "iterations", "syndrome",
                                                "vnode_validity", "dist", "structural_idx", "cluster_label", "hamming"])
     step_results["decoded_entropy"] = decoded_entropy_df
-    decoded_ldpc_df = pd.DataFrame(decoded_ldpc,
-                                   columns=["estimate", "llr", "decode_success", "iterations", "syndrome",
-                                            "vnode_validity", "hamming"])
+    if args.channel_type == "bsc":
+        decoded_ldpc_df = pd.DataFrame(decoded_ldpc,
+                                       columns=["estimate", "llr", "decode_success", "iterations", "syndrome",
+                                                "vnode_validity", "hamming"])
+    else:
+        decoded_ldpc_df = pd.DataFrame(decoded_ldpc,
+                                       columns=["estimate", "decode_success", "iterations", "syndrome",
+                                                "vnode_validity", "hamming"])
+
     step_results['decoded_ldpc'] = decoded_ldpc_df
     # performance
     step_results["ldpc_buffer_success_rate"] = sum(int(res[-1] == 0) for res in decoded_ldpc) / float(n)
@@ -278,13 +284,13 @@ if __name__ == '__main__':
             bit_flip_p = np.linspace(args.minflip, args.maxflip, num=args.nflips)
             map_arg = bit_flip_p
         else:
-            snr_db = np.linspace(args.min_ebno, args.max_ebno, num=args.n_points)
+            snr_db = np.linspace(args.minflip, args.maxflip, num=args.nflips)
             snr_linear = np.array([10 ** (snr / 10) for snr in snr_db])
             map_arg = snr_linear
 
-        # with Pool(processes=processes) as pool:
-        #     results: list[dict[str, Any]] = pool.map(simulation_step, map_arg)
-        results: list[dict[str, Any]] = list(map(simulation_step, map_arg))
+        with Pool(processes=processes) as pool:
+            results: list[dict[str, Any]] = pool.map(simulation_step, map_arg)
+        # results: list[dict[str, Any]] = list(map(simulation_step, map_arg))
 
         with lzma.open(
                 os.path.join(path, f'{timestamp}_simulation_classifying_entropy_{args.dec_type}_decoder.xz'),
