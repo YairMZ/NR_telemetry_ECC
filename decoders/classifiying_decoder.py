@@ -1,6 +1,6 @@
 from decoders import Decoder, DecoderType
 from inference import BufferClassifier
-from ldpc.decoder import LogSpaDecoder, WbfDecoder
+from ldpc.decoder import LogSpaDecoder, WbfDecoder, GalBfDecoder
 from numpy.typing import NDArray
 import numpy as np
 from typing import Optional
@@ -9,7 +9,8 @@ from utils.information_theory import prob, entropy
 
 
 class ClassifyingEntropyDecoder(Decoder):
-    def __init__(self, ldpc_decoder: LogSpaDecoder | WbfDecoder, model_length: int, entropy_threshold: float,
+    def __init__(self, ldpc_decoder: LogSpaDecoder | WbfDecoder | GalBfDecoder,
+                 model_length: int, entropy_threshold: float,
                  clipping_factor: float,
                  classifier_training: int, n_clusters: int,
                  window_length: Optional[int] = None, conf_center: int = 40, conf_slope: float = 0.35,
@@ -23,7 +24,7 @@ class ClassifyingEntropyDecoder(Decoder):
         :param clipping_factor: the maximum model llr is equal to the clipping_factor times the maximal channel llr
         :param window_length: number of last messages to consider when evaluating distribution and entropy. If none all
         """
-        self.ldpc_decoder: LogSpaDecoder | WbfDecoder = ldpc_decoder
+        self.ldpc_decoder: LogSpaDecoder | WbfDecoder | GalBfDecoder = ldpc_decoder
         self.model_length: int = model_length  # in bits
         self.entropy_threshold = entropy_threshold
         self.model_bits_idx = np.array(self.ldpc_decoder.info_idx)
@@ -87,6 +88,12 @@ class ClassifyingEntropyDecoder(Decoder):
                         estimate, decode_success, iterations, syndrome, vnode_validity = self.ldpc_decoder.decode(channel_llr)
                         return estimate, np.array([]), decode_success, iterations, syndrome, vnode_validity, np.array([]), \
                             np.array([]), label
+                    elif isinstance(self.ldpc_decoder, GalBfDecoder):
+                        hard_channel_bits = np.array(channel_llr < 0, dtype=np.int_)
+                        estimate, decode_success, iterations, syndrome, vnode_validity = self.ldpc_decoder.decode(
+                            hard_channel_bits)
+                        return estimate, np.array([]), decode_success, iterations, syndrome, vnode_validity, np.array([]), \
+                            np.array([]), label
             else:
                 self.running_idx = (self.running_idx + 1) % self.n_clusters
                 label = self.running_idx
@@ -110,6 +117,13 @@ class ClassifyingEntropyDecoder(Decoder):
             estimate, decode_success, iterations, syndrome, vnode_validity = self.ldpc_decoder.decode(samples,
                                                                                                       priors)
             llr = np.array([])
+        elif isinstance(self.ldpc_decoder, GalBfDecoder):
+            samples, _ = self._sample_and_priors(channel_llr, model_llr)
+            hard_channel_bits = np.array(samples < 0, dtype=np.int_)
+            estimate, decode_success, iterations, syndrome, vnode_validity = self.ldpc_decoder.decode(
+                hard_channel_bits)
+            llr = np.array([])
+
         model_bits = estimate[self.model_bits_idx]
         if decode_success:  # buffer fully recovered
             self.update_model(model_bits, label)
