@@ -93,27 +93,28 @@ def simulation_step(p: float) -> dict[str, Any]:
     ms_decoder = DecoderWiFi(spec=spec, max_iter=20, decoder_type="MS")
     m, nn = h.shape
     k = nn - m
+    ldpc_iterations = max(int(3*p*nn), ldpc_iterations)
     wbf_decoder = WbfDecoder(h=h, max_iter=ldpc_iterations, decoder_variant=WbfVariant.WBF,
                               info_idx=np.array([True] * k + [False] * m))
     wbf_entropy_decoder = ClassifyingEntropyDecoder(
         WbfDecoder(h=h,max_iter=ldpc_iterations, decoder_variant=WbfVariant.WBF,
                    info_idx=np.array([True] * k + [False] * m)),
         model_length=model_length, entropy_threshold=thr, clipping_factor=0, classifier_training=0, n_clusters=1,
-        window_length=window_len, conf_center=args.conf_center, conf_slope=args.conf_slope, bit_flip=p, cluster=0)
+        window_length=window_len, conf_center=args.conf_center, conf_slope=args.conf_slope, bit_flip=p, cluster=0, reliability_method=0)
     mwbf_decoder = WbfDecoder(h=h, max_iter=ldpc_iterations, decoder_variant=WbfVariant.MWBF,
                               info_idx=np.array([True] * k + [False] * m))
     mwbf_entropy_decoder = ClassifyingEntropyDecoder(
         WbfDecoder(h=h, max_iter=ldpc_iterations, decoder_variant=WbfVariant.MWBF,
                    info_idx=np.array([True] * k + [False] * m)),
         model_length=model_length, entropy_threshold=thr, clipping_factor=0, classifier_training=0, n_clusters=1,
-        window_length=window_len, conf_center=args.conf_center, conf_slope=args.conf_slope, bit_flip=p, cluster=0)
+        window_length=window_len, conf_center=args.conf_center, conf_slope=args.conf_slope, bit_flip=p, cluster=0, reliability_method=0)
     mwbf_decoder_no_loop = WbfDecoder(h=h, max_iter=ldpc_iterations, decoder_variant=WbfVariant.MWBF_NO_LOOPS,
                                       info_idx=np.array([True] * k + [False] * m))
     mwbf_entropy_decoder_no_loop = ClassifyingEntropyDecoder(
         WbfDecoder(h=h, max_iter=ldpc_iterations, decoder_variant=WbfVariant.MWBF_NO_LOOPS,
                    info_idx=np.array([True] * k + [False] * m)),
         model_length=model_length, entropy_threshold=thr, clipping_factor=0, classifier_training=0, n_clusters=1,
-        window_length=window_len, conf_center=args.conf_center, conf_slope=args.conf_slope, bit_flip=p, cluster=0)
+        window_length=window_len, conf_center=args.conf_center, conf_slope=args.conf_slope, bit_flip=p, cluster=0, reliability_method=0)
 
     decoded_ms = []
     decoded_wbf = []
