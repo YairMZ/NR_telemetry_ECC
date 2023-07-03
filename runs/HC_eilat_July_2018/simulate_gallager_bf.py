@@ -27,7 +27,6 @@ parser.add_argument("--ldpciterations", default=300, help="number of iterations 
 parser.add_argument("--ent_threshold", default=0.36, help="entropy threshold to be used in entropy decoder", type=float)
 parser.add_argument("--window_len", default=100, help="number of previous samples to use, if 0 all are used", type=int)
 parser.add_argument("--multiply_data", default=2, help="multiplies amount of buffers by 2 to power of arg", type=int)
-parser.add_argument("--processes", default=0, help="number of processes to spawn", type=int)
 parser.add_argument("--conf_center", default=40, help="center of model sigmoid", type=int)
 parser.add_argument("--conf_slope", default=0.35, help="slope of model sigmoid", type=float)
 parser.add_argument("--model_length", default="info", help="model length", type=str)
@@ -36,7 +35,7 @@ args = parser.parse_args()
 
 ldpc_iterations = args.ldpciterations
 thr = args.ent_threshold
-processes = args.processes if args.processes > 0 else None
+
 
 with open('data/hc_to_ship.pickle', 'rb') as f:
     hc_tx = pickle.load(f)
@@ -100,7 +99,7 @@ def simulation_step(p: float) -> dict[str, Any]:
         h=h, max_iter=ldpc_iterations, info_idx=np.array([True] * k + [False] * m)),
         model_length=model_length, entropy_threshold=thr/5, clipping_factor=0, classifier_training=0, n_clusters=1,
         window_length=window_len, conf_center=args.conf_center, conf_slope=args.conf_slope, bit_flip=p, cluster=0,
-        reliability_method=0)
+        reliability_method=3)
 
     decoded_galbf = []
     decoded_entropy_galbf = []
@@ -172,7 +171,6 @@ if __name__ == '__main__':
 
     logger.info(__file__)
     logger.info(f"number of buffers to process: {n}")
-    logger.info(f"number of processes: {args.processes}")
     logger.info(f"number of bit flips: {args.nflips}")
     logger.info(f"smallest f: {args.minflip}")
     logger.info(f"largest f: {args.maxflip}")
@@ -195,8 +193,6 @@ if __name__ == '__main__':
         cmd += ' --window_len 0'
     if args.N > 0:
         cmd += f' --N {n}'
-    if processes is not None:
-        cmd += f' --processes {processes}'
 
     os.mkdir(path)
     with open(os.path.join(path, "cmd.txt"), 'w') as f:
@@ -206,7 +202,7 @@ if __name__ == '__main__':
     try:
         bit_flip_p = np.linspace(args.minflip, args.maxflip, num=args.nflips)
 
-        # with Pool(processes=processes) as pool:
+        # with Pool() as pool:
         #     results: list[dict[str, Any]] = pool.map(simulation_step, bit_flip_p)
         results: list[dict[str, Any]] = list(map(simulation_step, bit_flip_p))
 

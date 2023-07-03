@@ -119,7 +119,10 @@ class ClassifyingEntropyDecoder(Decoder):
             llr = np.array([])
         elif isinstance(self.ldpc_decoder, GalBfDecoder):
             samples, _ = self._sample_and_priors(channel_llr, model_llr)
-            hard_channel_bits = np.array(samples < 0, dtype=np.int_)
+            if samples.dtype != np.int_:  # convert to hard bits
+                hard_channel_bits = np.array(samples < 0, dtype=np.int_)
+            else:
+                hard_channel_bits = samples
             estimate, decode_success, iterations, syndrome, vnode_validity = self.ldpc_decoder.decode(
                 hard_channel_bits)
             llr = np.array([])
@@ -212,11 +215,21 @@ class ClassifyingEntropyDecoder(Decoder):
                 rms_channel_sample = np.mean(np.power(channel_sample,2))**0.5
                 mean_check_degree = np.sum(self.ldpc_decoder.h, axis=1).mean()
                 confidence_coefficient = rms_channel_sample/mean_check_degree
-            priors = -np.sign(channel_sample*model_llr) * np.abs(model_llr)
-            if max(abs(priors)) > 0 and max(abs(priors)) > max_sample:  # normalize to samples
-                priors *= max_sample/max(abs(priors))
-            if max(abs(priors)) > 0 and max(abs(priors)) > confidence_coefficient:  # normalize to coefficient
-                priors *= confidence_coefficient/max(abs(priors))
+            if self.reliability_method in {1,2}:
+                priors = -np.sign(channel_sample*model_llr) * np.abs(model_llr)
+                if max(abs(priors)) > 0 and max(abs(priors)) > max_sample:  # normalize to samples
+                    priors *= max_sample/max(abs(priors))
+                if max(abs(priors)) > 0 and max(abs(priors)) > confidence_coefficient:  # normalize to coefficient
+                    priors *= confidence_coefficient/max(abs(priors))
+            if self.reliability_method == 3:
+                model_bits = np.array(model_llr < 0, dtype=np.int_)
+                samples = np.array(channel_sample < 0, dtype=np.int_)
+                size = self.models_data[0].shape[1] if self.models_data[0].size > 0 else 0
+                if size>= self.window_length:
+                    structural_elements: NDArray[np.int_] = self.model_bits_idx[
+                        self.models_entropy[0] < self.entropy_threshold]
+                    if structural_elements.any():
+                        samples[structural_elements] = model_bits[structural_elements]
         return samples, priors
 
 __all__ = ["ClassifyingEntropyDecoder"]
