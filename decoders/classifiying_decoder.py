@@ -113,7 +113,7 @@ class ClassifyingEntropyDecoder(Decoder):
         elif isinstance(self.ldpc_decoder, WbfDecoder):  # wbf decoder
             # Use WBF only with AWGN since it assumes a specific relationship between priors and LLR
             # The more positive the reliability is, the less reliable the value is
-            samples, priors = self._sample_and_priors(channel_llr,model_llr)
+            samples, priors = self._sample_and_priors(channel_llr, model_llr)
             estimate, decode_success, iterations, syndrome, vnode_validity = self.ldpc_decoder.decode(samples,
                                                                                                       priors)
             llr = np.array([])
@@ -207,7 +207,7 @@ class ClassifyingEntropyDecoder(Decoder):
                 samples *= max_sample/max(np.abs(samples))
                 return samples, priors
 
-            ## Methods 1&2 are shit. Don't USE!!! Use only method 0 until fixed.
+            ## Methods 1&2 are shit. Don't USE!!! Use only method 0 & 3 until fixed.
             confidence_coefficient = 1  # when reliability_method==1
             # if self.reliability_method == 1:  # don't modify samples, use confidence_coefficient=1
             #     confidence_coefficient = 1
@@ -221,7 +221,7 @@ class ClassifyingEntropyDecoder(Decoder):
                     priors *= max_sample/max(abs(priors))
                 if max(abs(priors)) > 0 and max(abs(priors)) > confidence_coefficient:  # normalize to coefficient
                     priors *= confidence_coefficient/max(abs(priors))
-            if self.reliability_method == 3:
+            if self.reliability_method == 3:  # Used for forcing th bits in the GalBfDecoder
                 model_bits = np.array(model_llr < 0, dtype=np.int_)
                 samples = np.array(channel_sample < 0, dtype=np.int_)
                 size = self.models_data[0].shape[1] if self.models_data[0].size > 0 else 0
