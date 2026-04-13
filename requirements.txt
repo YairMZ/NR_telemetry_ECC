@@ -2,7 +2,7 @@ bitstring==4.0.2
 numpy==1.24.4
 scipy==1.11.1
 pymavlink==2.4.38
-pytest==7.4.0
+pytest==9.0.3
 sim-ldpc==0.3.5
 matplotlib==3.5.3
 pandas==2.0.3
